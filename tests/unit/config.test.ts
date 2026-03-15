@@ -1,9 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giancarlo Erra - Altaire Limited
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { collectionName, contextCollectionName, graphCollectionName, projectIdFromPath } from "../../src/config.js";
 
 describe("config", () => {
+  // Clean up env override between tests
+  const originalEnv = process.env.SOCRATICODE_PROJECT_ID;
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env.SOCRATICODE_PROJECT_ID;
+    } else {
+      process.env.SOCRATICODE_PROJECT_ID = originalEnv;
+    }
+  });
+
   describe("projectIdFromPath", () => {
     it("returns a 12-character hex string", () => {
       const id = projectIdFromPath("/some/project/path");
@@ -41,6 +51,37 @@ describe("config", () => {
       const id2 = projectIdFromPath("/some/project/");
       // path.resolve normalizes trailing slash, so they should match
       expect(id1).toBe(id2);
+    });
+
+    it("uses SOCRATICODE_PROJECT_ID when set", () => {
+      process.env.SOCRATICODE_PROJECT_ID = "my-shared-project";
+      const id = projectIdFromPath("/some/project/path");
+      expect(id).toBe("my-shared-project");
+    });
+
+    it("ignores path differences when SOCRATICODE_PROJECT_ID is set", () => {
+      process.env.SOCRATICODE_PROJECT_ID = "shared";
+      const id1 = projectIdFromPath("/worktree/a");
+      const id2 = projectIdFromPath("/worktree/b");
+      expect(id1).toBe(id2);
+    });
+
+    it("trims whitespace from SOCRATICODE_PROJECT_ID", () => {
+      process.env.SOCRATICODE_PROJECT_ID = "  my-project  ";
+      expect(projectIdFromPath("/any/path")).toBe("my-project");
+    });
+
+    it("throws on invalid SOCRATICODE_PROJECT_ID characters", () => {
+      process.env.SOCRATICODE_PROJECT_ID = "invalid/name";
+      expect(() => projectIdFromPath("/any/path")).toThrow(
+        /SOCRATICODE_PROJECT_ID must match/,
+      );
+    });
+
+    it("falls back to hash when SOCRATICODE_PROJECT_ID is empty", () => {
+      process.env.SOCRATICODE_PROJECT_ID = "  ";
+      const id = projectIdFromPath("/some/project/path");
+      expect(id).toMatch(/^[0-9a-f]{12}$/);
     });
   });
 

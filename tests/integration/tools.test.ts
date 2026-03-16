@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { invalidateGraphCache, rebuildGraph } from "../../src/services/code-graph.js";
+import { awaitGraphBuild, invalidateGraphCache, rebuildGraph } from "../../src/services/code-graph.js";
 import { stopAllWatchers } from "../../src/services/watcher.js";
 import { handleContextTool } from "../../src/tools/context-tools.js";
 import { handleGraphTool } from "../../src/tools/graph-tools.js";
@@ -120,7 +120,8 @@ describe("graph tool handlers", () => {
 
   describe("codebase_graph_query", () => {
     it("queries file dependencies", async () => {
-      // Build graph directly (tool is fire-and-forget now)
+      // Wait for any in-flight background build, then rebuild
+      await awaitGraphBuild(fixture.root);
       await rebuildGraph(fixture.root);
 
       const result = await handleGraphTool("codebase_graph_query", {
@@ -160,7 +161,8 @@ describe("graph tool handlers", () => {
 
   describe("codebase_graph_remove", () => {
     it("removes the graph and confirms", async () => {
-      // Ensure graph exists before removing
+      // Wait for any in-flight background build, then rebuild to ensure graph exists
+      await awaitGraphBuild(fixture.root);
       await rebuildGraph(fixture.root);
 
       const result = await handleGraphTool("codebase_graph_remove", {
@@ -398,8 +400,8 @@ export function createRouter(routes: Route[]): void {
         // Should indicate project is not indexed
         expect(
           result.toLowerCase().includes("not") ||
-            result.toLowerCase().includes("no ") ||
-            result.toLowerCase().includes("does not"),
+          result.toLowerCase().includes("no ") ||
+          result.toLowerCase().includes("does not"),
         ).toBe(true);
       }, 30_000);
     });

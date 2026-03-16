@@ -152,11 +152,18 @@ async function doRebuildGraph(
     const graph = await buildCodeGraph(resolvedPath, extraExtensions, progress);
     graphCache.set(resolvedPath, graph);
 
-    // Persist to Qdrant
+    // Persist to Qdrant (best-effort — graph is already cached in memory)
     progress.phase = "persisting";
     const projectId = projectIdFromPath(resolvedPath);
     const graphCollName = graphCollectionName(projectId);
-    await saveGraphData(graphCollName, resolvedPath, graph);
+    try {
+      await saveGraphData(graphCollName, resolvedPath, graph);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn("Failed to persist graph to Qdrant (graph is still cached in memory)", {
+        projectPath: resolvedPath, error: msg,
+      });
+    }
 
     lastGraphBuildCompleted.set(resolvedPath, {
       completedAt: Date.now(),
@@ -249,19 +256,19 @@ export function ensureDynamicLanguages(): void {
     const langModules: Record<string, { libraryPath: string; extensions: string[]; languageSymbol?: string }> = {};
 
     const langPackages: Array<[string, string]> = [
-      ["python",  "@ast-grep/lang-python"],
-      ["go",      "@ast-grep/lang-go"],
-      ["java",    "@ast-grep/lang-java"],
-      ["rust",    "@ast-grep/lang-rust"],
-      ["c",       "@ast-grep/lang-c"],
-      ["cpp",     "@ast-grep/lang-cpp"],
-      ["csharp",  "@ast-grep/lang-csharp"],
-      ["ruby",    "@ast-grep/lang-ruby"],
-      ["kotlin",  "@ast-grep/lang-kotlin"],
-      ["swift",   "@ast-grep/lang-swift"],
-      ["scala",   "@ast-grep/lang-scala"],
-      ["bash",    "@ast-grep/lang-bash"],
-      ["php",     "@ast-grep/lang-php"],
+      ["python", "@ast-grep/lang-python"],
+      ["go", "@ast-grep/lang-go"],
+      ["java", "@ast-grep/lang-java"],
+      ["rust", "@ast-grep/lang-rust"],
+      ["c", "@ast-grep/lang-c"],
+      ["cpp", "@ast-grep/lang-cpp"],
+      ["csharp", "@ast-grep/lang-csharp"],
+      ["ruby", "@ast-grep/lang-ruby"],
+      ["kotlin", "@ast-grep/lang-kotlin"],
+      ["swift", "@ast-grep/lang-swift"],
+      ["scala", "@ast-grep/lang-scala"],
+      ["bash", "@ast-grep/lang-bash"],
+      ["php", "@ast-grep/lang-php"],
     ];
 
     for (const [name, pkg] of langPackages) {

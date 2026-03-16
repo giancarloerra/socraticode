@@ -6,6 +6,8 @@ import { SEARCH_DEFAULT_LIMIT, SEARCH_MIN_SCORE } from "../constants.js";
 import { getGraphStatus } from "../services/code-graph.js";
 import { getArtifactStatusSummary } from "../services/context-artifacts.js";
 import { ensureQdrantReady } from "../services/docker.js";
+import { getEmbeddingConfig } from "../services/embedding-config.js";
+import { getEmbeddingProvider } from "../services/embedding-provider.js";
 import type { IndexingProgress } from "../services/indexer.js";
 import { getIndexingProgress, getLastCompleted, isIndexingInProgress } from "../services/indexer.js";
 import { getLockHolderPid, } from "../services/lock.js";
@@ -57,7 +59,13 @@ export async function handleQueryTool(
   switch (name) {
     case "codebase_search": {
       await ensureQdrantReady();
-      await ensureOllamaReady();
+      // Only ensure Ollama infrastructure when using the Ollama embedding provider.
+      // For OpenAI/Google providers, just ensure the provider is initialized.
+      if (getEmbeddingConfig().embeddingProvider === "ollama") {
+        await ensureOllamaReady();
+      } else {
+        await getEmbeddingProvider();
+      }
 
       const query = args.query as string;
       const limit = (args.limit as number) || SEARCH_DEFAULT_LIMIT;

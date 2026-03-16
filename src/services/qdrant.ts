@@ -285,14 +285,14 @@ export async function upsertPreEmbeddedChunks(
   return { pointsSkipped: totalSkipped };
 }
 
-/** Delete all chunks for a specific file */
-export async function deleteFileChunks(collectionName: string, filePath: string): Promise<void> {
+/** Delete all chunks for a specific file (matched by relativePath) */
+export async function deleteFileChunks(collectionName: string, relativePath: string): Promise<void> {
   const qdrant = getClient();
-  logger.info("Deleting file chunks", { collection: collectionName, filePath });
+  logger.info("Deleting file chunks", { collection: collectionName, relativePath });
   await withRetry(
     () => qdrant.delete(collectionName, {
       filter: {
-        must: [{ key: "filePath", match: { value: filePath } }],
+        must: [{ key: "relativePath", match: { value: relativePath } }],
       },
     }),
     "Qdrant delete chunks",

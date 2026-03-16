@@ -207,7 +207,7 @@ describe.skipIf(!dockerAvailable)("qdrant service", () => {
 
   describe("delete file chunks", () => {
     it("deletes chunks for a specific file", async () => {
-      await deleteFileChunks(TEST_COLLECTION, "/project/lib/data.py");
+      await deleteFileChunks(TEST_COLLECTION, "lib/data.py");
 
       const info = await getCollectionInfo(TEST_COLLECTION);
       expect(info?.pointsCount).toBe(2); // 2 remaining

@@ -69,6 +69,18 @@ describe("indexer utilities", () => {
       const b = chunkId("/path/bar.ts", 1);
       expect(a).not.toBe(b);
     });
+
+    it("produces the same ID for the same relative path regardless of absolute prefix", () => {
+      // With relative paths as the canonical key, worktrees at different
+      // absolute locations produce identical chunk IDs.
+      const relPath = "src/index.ts";
+      const a = chunkId(relPath, 1);
+      const b = chunkId(relPath, 1);
+      expect(a).toBe(b);
+      // And it differs from an absolute-looking path
+      const c = chunkId("/home/user/project/src/index.ts", 1);
+      expect(a).not.toBe(c);
+    });
   });
 
   // ── isIndexableFile ──────────────────────────────────────────

@@ -134,7 +134,7 @@ function isCancellationRequested(resolvedPath: string): boolean {
   return cancellationRequested.get(resolvedPath) === true;
 }
 
-async function getProjectHashes(projectId: string, collection: string): Promise<Map<string, string>> {
+async function getProjectHashes(projectId: string, collection: string, resolvedProjectPath?: string): Promise<Map<string, string>> {
   if (!projectHashes.has(projectId)) {
     // Try to load from Qdrant (persistent storage).
     // loadProjectHashes now throws on transient errors (instead of returning null),
@@ -144,14 +144,72 @@ async function getProjectHashes(projectId: string, collection: string): Promise<
       projectHashesLoaded.add(projectId);
       const stored = await loadProjectHashes(collection);
       if (stored) {
-        logger.info("Loaded file hashes from Qdrant", { projectId, count: stored.size });
-        projectHashes.set(projectId, stored);
-        return stored;
+        // Migrate absolute-path keys to relative paths (one-time, transparent).
+        // Indexes built before the relative-path fix stored absolute paths as hash keys.
+        const migrated = migrateAbsolutePathKeys(stored, resolvedProjectPath);
+        logger.info("Loaded file hashes from Qdrant", { projectId, count: migrated.size, wasMigrated: migrated !== stored });
+        projectHashes.set(projectId, migrated);
+        return migrated;
       }
     }
     projectHashes.set(projectId, new Map());
   }
   return projectHashes.get(projectId) as Map<string, string>;
+}
+
+/**
+ * Migrate hash map keys from absolute paths to relative paths.
+ * Returns a new map if migration was needed, or the original map if keys are already relative.
+ */
+function migrateAbsolutePathKeys(hashes: Map<string, string>, resolvedProjectPath?: string): Map<string, string> {
+  if (hashes.size === 0) return hashes;
+
+  // Check if keys look like absolute paths
+  const firstKey = hashes.keys().next().value as string;
+  if (!firstKey.startsWith("/") && !firstKey.startsWith("\\")) return hashes;
+
+  // Try to strip the stored project path prefix, or detect the common prefix
+  const prefix = resolvedProjectPath
+    ? resolvedProjectPath + "/"
+    : detectCommonPrefix(hashes);
+
+  if (!prefix) {
+    logger.warn("Hash keys appear absolute but could not determine prefix to strip — skipping migration");
+    return hashes;
+  }
+
+  const migrated = new Map<string, string>();
+  for (const [absPath, hash] of hashes) {
+    const relative = absPath.startsWith(prefix) ? absPath.slice(prefix.length) : absPath;
+    migrated.set(relative, hash);
+  }
+
+  logger.info("Migrated hash keys from absolute to relative paths", { count: migrated.size, prefix });
+  return migrated;
+}
+
+/** Detect the longest common directory prefix across all hash keys */
+function detectCommonPrefix(hashes: Map<string, string>): string | null {
+  const keys = Array.from(hashes.keys());
+  if (keys.length === 0) return null;
+
+  let prefix = keys[0];
+  for (let i = 1; i < keys.length; i++) {
+    while (!keys[i].startsWith(prefix)) {
+      const lastSlash = prefix.lastIndexOf("/");
+      if (lastSlash <= 0) return null;
+      prefix = prefix.slice(0, lastSlash + 1);
+    }
+  }
+
+  // Ensure prefix ends with /
+  if (!prefix.endsWith("/")) {
+    const lastSlash = prefix.lastIndexOf("/");
+    if (lastSlash <= 0) return null;
+    prefix = prefix.slice(0, lastSlash + 1);
+  }
+
+  return prefix;
 }
 
 /** Hash file content for change detection */
@@ -160,8 +218,8 @@ export function hashContent(content: string): string {
 }
 
 /** Generate a stable chunk ID as a valid UUID (required by Qdrant) */
-export function chunkId(filePath: string, startLine: number): string {
-  const hash = createHash("sha256").update(`${filePath}:${startLine}`).digest("hex").slice(0, 32);
+export function chunkId(relativePath: string, startLine: number): string {
+  const hash = createHash("sha256").update(`${relativePath}:${startLine}`).digest("hex").slice(0, 32);
   // Format as UUID: 8-4-4-4-12
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
 }
@@ -323,7 +381,7 @@ function chunkByCharacters(
     const endLine = startLine + newlineCount;
 
     chunks.push({
-      id: chunkId(filePath, offset), // byte offset → unique ID even for 1-line files
+      id: chunkId(relativePath, offset), // byte offset → unique ID even for 1-line files
       filePath,
       relativePath,
       content: chunkContent,
@@ -373,7 +431,7 @@ export function chunkFileContent(
   // Small files: single chunk regardless of language
   if (lines.length <= CHUNK_SIZE) {
     return applyCharCap([{
-      id: chunkId(filePath, 1),
+      id: chunkId(relativePath, 1),
       filePath,
       relativePath,
       content,
@@ -414,7 +472,7 @@ function chunkByAstRegions(
     const preambleLines = lines.slice(0, regions[0].startLine);
     if (preambleLines.length > 0) {
       chunks.push({
-        id: chunkId(filePath, 1),
+        id: chunkId(relativePath, 1),
         filePath,
         relativePath,
         content: preambleLines.join("\n"),
@@ -437,7 +495,7 @@ function chunkByAstRegions(
 
     if (regionLength <= MAX_CHUNK_LINES) {
       chunks.push({
-        id: chunkId(filePath, pendingStart + 1),
+        id: chunkId(relativePath, pendingStart + 1),
         filePath,
         relativePath,
         content: regionLines.join("\n"),
@@ -451,7 +509,7 @@ function chunkByAstRegions(
       for (let start = 0; start < regionLength; start += CHUNK_SIZE - CHUNK_OVERLAP) {
         const end = Math.min(start + CHUNK_SIZE, regionLength);
         chunks.push({
-          id: chunkId(filePath, pendingStart + start + 1),
+          id: chunkId(relativePath, pendingStart + start + 1),
           filePath,
           relativePath,
           content: regionLines.slice(start, end).join("\n"),
@@ -500,7 +558,7 @@ function chunkByAstRegions(
     const epilogueLines = lines.slice(lastEnd);
     if (epilogueLines.length > 0) {
       chunks.push({
-        id: chunkId(filePath, lastEnd + 1),
+        id: chunkId(relativePath, lastEnd + 1),
         filePath,
         relativePath,
         content: epilogueLines.join("\n"),
@@ -531,7 +589,7 @@ function chunkByLines(
     const chunkContent = lines.slice(start, end).join("\n");
 
     chunks.push({
-      id: chunkId(filePath, start + 1),
+      id: chunkId(relativePath, start + 1),
       filePath,
       relativePath,
       content: chunkContent,
@@ -601,7 +659,7 @@ export async function indexProject(
   try {
   const projectId = projectIdFromPath(resolvedPath);
   const collection = collectionName(projectId);
-  const hashes = await getProjectHashes(projectId, collection);
+  const hashes = await getProjectHashes(projectId, collection, resolvedPath);
 
   // Smart re-index: check if collection already has data.
   // getCollectionInfo now throws on transient errors (instead of returning null),
@@ -676,7 +734,7 @@ export async function indexProject(
           const contentHash = hashContent(content);
 
           // Skip unchanged files during re-index
-          if (hasExistingData && hashes.get(absolutePath) === contentHash) {
+          if (hasExistingData && hashes.get(relativePath) === contentHash) {
             return null;
           }
 
@@ -701,17 +759,17 @@ export async function indexProject(
     // Delete old chunks for changed files
     progress.phase = "cleaning stale chunks";
     for (const file of chunkedFiles) {
-      if (hashes.has(file.absolutePath)) {
-        await deleteFileChunks(collection, file.absolutePath);
+      if (hashes.has(file.relativePath)) {
+        await deleteFileChunks(collection, file.relativePath);
       }
     }
 
     // Handle deleted files
-    const currentFileSet = new Set(files.map((f) => path.join(resolvedPath, f)));
-    for (const [absolutePath] of hashes) {
-      if (!currentFileSet.has(absolutePath)) {
-        await deleteFileChunks(collection, absolutePath);
-        hashes.delete(absolutePath);
+    const currentFileSet = new Set(files);
+    for (const [filePath] of hashes) {
+      if (!currentFileSet.has(filePath)) {
+        await deleteFileChunks(collection, filePath);
+        hashes.delete(filePath);
       }
     }
   }
@@ -812,7 +870,7 @@ export async function indexProject(
 
     // Update hashes for this batch's files
     for (const file of fileBatch) {
-      hashes.set(file.absolutePath, file.contentHash);
+      hashes.set(file.relativePath, file.contentHash);
     }
     totalChunksCreated += batchChunkData.length;
 
@@ -920,7 +978,7 @@ export async function updateProjectIndex(
   try {
   const projectId = projectIdFromPath(resolvedPath);
   const collection = collectionName(projectId);
-  const hashes = await getProjectHashes(projectId, collection);
+  const hashes = await getProjectHashes(projectId, collection, resolvedPath);
 
   // Ensure collection exists — getCollectionInfo now throws on transient errors,
   // so a network blip will abort rather than cascade into a destructive fallback.
@@ -961,7 +1019,7 @@ export async function updateProjectIndex(
   const currentFiles = await getIndexableFiles(resolvedPath, extraExtensions);
   progress.filesTotal = currentFiles.length;
   onProgress?.(`Found ${currentFiles.length} indexable files, scanning for changes...`);
-  const currentFileSet = new Set(currentFiles.map((f) => path.join(resolvedPath, f)));
+  const currentFileSet = new Set(currentFiles);
 
   interface ChangedFile {
     relativePath: string;
@@ -986,7 +1044,7 @@ export async function updateProjectIndex(
           }
           const content = await fsp.readFile(absolutePath, "utf-8");
           const contentHash = hashContent(content);
-          const existingHash = hashes.get(absolutePath);
+          const existingHash = hashes.get(relativePath);
 
           if (existingHash === contentHash) return null;
 
@@ -1015,7 +1073,7 @@ export async function updateProjectIndex(
     progress.phase = "cleaning stale chunks";
     for (const file of changedFiles) {
       if (!file.isNew) {
-        await deleteFileChunks(collection, file.absolutePath);
+        await deleteFileChunks(collection, file.relativePath);
       }
     }
 
@@ -1103,7 +1161,7 @@ export async function updateProjectIndex(
 
       // Update hashes and counts for this batch's files
       for (const file of fileBatch) {
-        hashes.set(file.absolutePath, file.contentHash);
+        hashes.set(file.relativePath, file.contentHash);
         if (file.isNew) added++;
         else updated++;
       }
@@ -1119,10 +1177,10 @@ export async function updateProjectIndex(
 
   // Check for deleted files
   progress.phase = "removing deleted files";
-  for (const [absolutePath] of hashes) {
-    if (!currentFileSet.has(absolutePath)) {
-      await deleteFileChunks(collection, absolutePath);
-      hashes.delete(absolutePath);
+  for (const [filePath] of hashes) {
+    if (!currentFileSet.has(filePath)) {
+      await deleteFileChunks(collection, filePath);
+      hashes.delete(filePath);
       removed++;
     }
   }

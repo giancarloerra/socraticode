@@ -11,6 +11,7 @@
 import { collectionName, projectIdFromPath } from "../config.js";
 import { QDRANT_MODE } from "../constants.js";
 import { isDockerAvailable, isQdrantRunning } from "./docker.js";
+import { pluginManager } from "./plugin.js";
 import { getIndexingInProgressProjects, getPersistedIndexingStatus, indexProject, requestCancellation, updateProjectIndex } from "./indexer.js";
 import { getLockHolderPid, releaseAllLocks } from "./lock.js";
 import { logger } from "./logger.js";
@@ -36,6 +37,9 @@ import { isWatching, startWatching, stopAllWatchers } from "./watcher.js";
  */
 export async function autoResumeIndexedProjects(projectPath?: string): Promise<void> {
   try {
+    // Discover and load plugins from src/plugins/*/index.ts
+    await pluginManager.load();
+    
     // In managed mode, check if Docker and Qdrant are already running — don't start them.
     // In external mode, skip Docker checks and let listCodebaseCollections() fail if unreachable.
     if (QDRANT_MODE === "managed") {
@@ -186,6 +190,7 @@ export async function gracefulShutdown(signal: string, closeServer?: () => Promi
   }
 
   await awaitActiveIndexing();
+  await pluginManager.onShutdown();
   await stopAllWatchers();
   await releaseAllLocks();
 

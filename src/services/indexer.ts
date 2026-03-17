@@ -21,6 +21,7 @@ import {
 import type { FileChunk } from "../types.js";
 import { ensureDynamicLanguages, getAstGrepLang, rebuildGraph, removeGraph } from "./code-graph.js";
 import { ensureArtifactsIndexed, loadConfig, removeAllArtifacts } from "./context-artifacts.js";
+import { pluginManager } from "./plugin.js";
 import { generateEmbeddings, prepareDocumentText } from "./embeddings.js";
 import { createIgnoreFilter, shouldIgnore } from "./ignore.js";
 import { acquireProjectLock, releaseProjectLock } from "./lock.js";
@@ -919,6 +920,10 @@ export async function indexProject(
     onProgress?.(`Context artifact indexing failed (non-fatal): ${artifactMsg}`);
   }
 
+  // Run post-index lifecycle hooks (git memory, future extensions)
+  progress.phase = "running post-index hooks";
+  await pluginManager.onProjectIndexed(resolvedPath, onProgress);
+
   onProgress?.(`Indexing complete: ${filesIndexed} files, ${chunksCreated} chunks`);
   lastCompleted.set(resolvedPath, {
     type: "full-index",
@@ -1217,6 +1222,10 @@ export async function updateProjectIndex(
     logger.warn("Context artifact indexing failed during incremental update (non-fatal)", { projectPath: resolvedPath, error: artifactMsg });
   }
 
+  // Run post-update lifecycle hooks (git memory, future extensions)
+  progress.phase = "running post-update hooks";
+  await pluginManager.onProjectUpdated(resolvedPath, onProgress);
+
   onProgress?.(`Update complete: ${added} added, ${updated} updated, ${removed} removed`);
   lastCompleted.set(resolvedPath, {
     type: "incremental-update",
@@ -1256,6 +1265,8 @@ export async function removeProjectIndex(projectPath: string): Promise<void> {
   await removeGraph(resolvedPath);
   // Also remove context artifacts (if any)
   await removeAllArtifacts(resolvedPath);
+  // Run post-remove lifecycle hooks
+  await pluginManager.onProjectRemoved(resolvedPath);
   projectHashes.delete(projectId);
   projectHashesLoaded.delete(projectId);
 }

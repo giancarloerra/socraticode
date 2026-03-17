@@ -5,10 +5,10 @@ Plugins extend SocratiCode's indexer with custom behavior. They are auto-discove
 ## Creating a Plugin
 
 1. Create a folder: `src/plugins/<your-plugin>/`
-2. Add an `index.ts` entry point that calls `registerPlugin()`:
+2. Add an `index.ts` entry point that registers with the plugin manager:
 
 ```typescript
-import { registerPlugin } from "../../services/plugin.js";
+import { pluginManager } from "../../services/plugin.js";
 import type { SocratiCodePlugin } from "../../services/plugin.js";
 
 const myPlugin: SocratiCodePlugin = {
@@ -19,10 +19,10 @@ const myPlugin: SocratiCodePlugin = {
   async onShutdown() { /* ... */ },
 };
 
-registerPlugin(myPlugin);
+pluginManager.register(myPlugin);
 ```
 
-3. That's it — `loadPlugins()` discovers and loads it automatically.
+3. That's it — `pluginManager.load()` discovers and loads it automatically.
 
 ## Plugin Structure
 
@@ -49,7 +49,3 @@ All hooks are optional. Errors are non-fatal (logged, never crash the indexer).
 | `onProjectUpdated` | After incremental update | `projectPath`, `onProgress?` |
 | `onProjectRemoved` | After index removal | `projectPath` |
 | `onShutdown` | Graceful shutdown | — |
-
-## Existing Plugins
-
-- **[git-memory](./git-memory/)** — Extracts knowledge from git history via LLMs. Enabled with `GIT_MEMORY_ENABLED=true`.

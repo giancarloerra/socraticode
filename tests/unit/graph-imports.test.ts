@@ -4,7 +4,7 @@
 import { Lang } from "@ast-grep/napi";
 import { beforeAll, describe, expect, it } from "vitest";
 import { ensureDynamicLanguages } from "../../src/services/code-graph.js";
-import { extractImports, } from "../../src/services/graph-imports.js";
+import { extractImports } from "../../src/services/graph-imports.js";
 
 // Register dynamic language grammars once before all tests
 beforeAll(() => {
@@ -37,7 +37,9 @@ const mod = await import("./dynamic-module.js");
       const dynamicImports = imports.filter((i) => i.isDynamic);
 
       expect(dynamicImports.length).toBeGreaterThanOrEqual(1);
-      expect(dynamicImports.some((i) => i.moduleSpecifier === "./dynamic-module.js")).toBe(true);
+      expect(
+        dynamicImports.some((i) => i.moduleSpecifier === "./dynamic-module.js"),
+      ).toBe(true);
     });
 
     it("extracts require() calls", () => {
@@ -77,6 +79,112 @@ function hello() {
 `;
       const imports = extractImports(source, Lang.TypeScript, ".ts");
       expect(imports).toHaveLength(0);
+    });
+  });
+
+  // ── Svelte ──────────────────────────────────────────────────────────────
+
+  describe("Svelte imports", () => {
+    it("extracts imports from <script> blocks", () => {
+      const source = `
+<script lang="ts">
+  import { onMount } from "svelte";
+  import Button from "./Button.svelte";
+  import { type Props } from "../types.js";
+</script>
+
+<Button>Click me</Button>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("svelte");
+      expect(specs).toContain("./Button.svelte");
+      expect(specs).toContain("../types.js");
+    });
+
+    it("extracts imports from <script module> blocks", () => {
+      const source = `
+<script lang="ts" module>
+  export type Variant = "primary" | "secondary";
+  export { default as Button } from "./Button.svelte";
+</script>
+
+<script lang="ts">
+  import { onMount } from "svelte";
+</script>
+
+<div>content</div>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("./Button.svelte");
+      expect(specs).toContain("svelte");
+    });
+
+    it("extracts dynamic imports from Svelte files", () => {
+      const source = `
+<script lang="ts">
+  const Component = await import("./DynamicComponent.svelte");
+</script>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      const dynamicImports = imports.filter((i) => i.isDynamic);
+
+      expect(dynamicImports.length).toBeGreaterThanOrEqual(1);
+      expect(
+        dynamicImports.some(
+          (i) => i.moduleSpecifier === "./DynamicComponent.svelte",
+        ),
+      ).toBe(true);
+    });
+
+    it("handles Svelte files with no script block", () => {
+      const source = `
+<div>Just markup, no script</div>
+<style>
+  div { color: red; }
+</style>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      expect(imports).toHaveLength(0);
+    });
+
+    it("handles Svelte files with JavaScript (no lang=ts)", () => {
+      const source = `
+<script>
+  import { writable } from "svelte/store";
+  import Item from "./Item.svelte";
+</script>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("svelte/store");
+      expect(specs).toContain("./Item.svelte");
+    });
+  });
+
+  // ── Vue ────────────────────────────────────────────────────────────────
+
+  describe("Vue imports", () => {
+    it("extracts imports from <script> blocks", () => {
+      const source = `
+<script lang="ts">
+  import { ref, computed } from "vue";
+  import MyComponent from "./MyComponent.vue";
+</script>
+
+<template>
+  <MyComponent />
+</template>
+`;
+      const imports = extractImports(source, "vue", ".vue");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("vue");
+      expect(specs).toContain("./MyComponent.vue");
     });
   });
 
@@ -342,8 +450,12 @@ import kotlinx.coroutines.launch
       const specs = imports.map((i) => i.moduleSpecifier);
 
       expect(specs.length).toBeGreaterThanOrEqual(3);
-      expect(specs.some((s) => s.includes("com.example.models.User"))).toBe(true);
-      expect(specs.some((s) => s.includes("com.example.utils.StringHelper"))).toBe(true);
+      expect(specs.some((s) => s.includes("com.example.models.User"))).toBe(
+        true,
+      );
+      expect(
+        specs.some((s) => s.includes("com.example.utils.StringHelper")),
+      ).toBe(true);
     });
 
     it("handles wildcard imports", () => {
@@ -353,7 +465,9 @@ import com.example.models.*
       const imports = extractImports(source, "kotlin", ".kt");
 
       expect(imports.length).toBeGreaterThanOrEqual(1);
-      expect(imports.some((i) => i.moduleSpecifier.includes("com.example.models"))).toBe(true);
+      expect(
+        imports.some((i) => i.moduleSpecifier.includes("com.example.models")),
+      ).toBe(true);
     });
   });
 
@@ -372,7 +486,11 @@ import com.example.services._
       const specs = imports.map((i) => i.moduleSpecifier);
 
       expect(specs.length).toBeGreaterThanOrEqual(2);
-      expect(specs.some((s) => s.includes("scala.collection") || s.includes("ListBuffer"))).toBe(true);
+      expect(
+        specs.some(
+          (s) => s.includes("scala.collection") || s.includes("ListBuffer"),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -429,7 +547,9 @@ using static System.Math;
       const imports = extractImports(source, "csharp", ".cs");
 
       expect(imports.length).toBeGreaterThanOrEqual(1);
-      expect(imports.some((i) => i.moduleSpecifier.includes("System.Math"))).toBe(true);
+      expect(
+        imports.some((i) => i.moduleSpecifier.includes("System.Math")),
+      ).toBe(true);
     });
 
     it("skips using alias directives", () => {

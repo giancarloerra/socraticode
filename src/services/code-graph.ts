@@ -305,6 +305,9 @@ export function getAstGrepLang(ext: string): Lang | string | null {
     ".dart": "dart",
     ".lua": "lua",
     ".sh": "bash", ".bash": "bash", ".zsh": "bash",
+    // Composite languages (parsed via HTML + script re-parse)
+    ".svelte": "svelte",
+    ".vue": "vue",
     // Built-in languages (Lang enum)
     ".js": Lang.JavaScript, ".jsx": Lang.JavaScript, ".mjs": Lang.JavaScript, ".cjs": Lang.JavaScript,
     ".ts": Lang.TypeScript,

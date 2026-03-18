@@ -22,11 +22,13 @@ export function resolveImport(
 
   switch (language) {
     case "javascript":
-    case "typescript": {
+    case "typescript":
+    case "svelte":
+    case "vue": {
       // Relative imports: ./foo, ../bar
       if (moduleSpecifier.startsWith(".")) {
         return resolveRelativePath(moduleSpecifier, sourceDir, projectPath, fileSet, [
-          ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+          ".svelte", ".vue", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
         ]);
       }
       return null; // npm packages

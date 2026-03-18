@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giancarlo Erra - Altaire Limited
-import { type Lang, parse } from "@ast-grep/napi";
+import { Lang, parse } from "@ast-grep/napi";
 import { logger } from "./logger.js";
 
 // ── Import extraction per language ───────────────────────────────────────
@@ -8,6 +8,46 @@ import { logger } from "./logger.js";
 export interface ImportInfo {
   moduleSpecifier: string; // The raw import string
   isDynamic: boolean;
+}
+
+/** Extract JS/TS imports from an ast-grep root node. Shared by JS/TS and Svelte/Vue handlers. */
+function extractJsTsImportsFromNode(sgNode: ReturnType<ReturnType<typeof parse>["root"]>): ImportInfo[] {
+  const imports: ImportInfo[] = [];
+
+  // import ... from "..."
+  for (const node of sgNode.findAll({ rule: { kind: "import_statement" } })) {
+    const sourceNode = node.find({ rule: { kind: "string" } });
+    if (sourceNode) {
+      const spec = sourceNode.text().replace(/['"]/g, "");
+      imports.push({ moduleSpecifier: spec, isDynamic: false });
+    }
+  }
+  // require("...")
+  for (const node of sgNode.findAll({ rule: { kind: "call_expression" } })) {
+    const text = node.text();
+    const match = text.match(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+    if (match) {
+      imports.push({ moduleSpecifier: match[1], isDynamic: false });
+    }
+  }
+  // dynamic import("...")
+  for (const node of sgNode.findAll({ rule: { kind: "call_expression" } })) {
+    const text = node.text();
+    const match = text.match(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+    if (match) {
+      imports.push({ moduleSpecifier: match[1], isDynamic: true });
+    }
+  }
+  // export ... from "..."
+  for (const node of sgNode.findAll({ rule: { kind: "export_statement" } })) {
+    const sourceNode = node.find({ rule: { kind: "string" } });
+    if (sourceNode) {
+      const spec = sourceNode.text().replace(/['"]/g, "");
+      imports.push({ moduleSpecifier: spec, isDynamic: false });
+    }
+  }
+
+  return imports;
 }
 
 /**
@@ -43,6 +83,29 @@ export function extractImports(source: string, lang: Lang | string, _ext: string
     return imports;
   }
 
+  // ── Svelte/Vue: parse as HTML, extract <script> blocks, re-parse as TS ──
+  if (langKey === "svelte" || langKey === "vue") {
+    try {
+      const htmlRoot = parse(Lang.Html, source).root();
+      const scriptElements = htmlRoot.findAll({ rule: { kind: "script_element" } });
+
+      for (const scriptEl of scriptElements) {
+        const rawText = scriptEl.find({ rule: { kind: "raw_text" } });
+        if (!rawText) continue;
+
+        const scriptContent = rawText.text();
+        if (!scriptContent.trim()) continue;
+
+        // Default to TypeScript (superset of JS, safe for both)
+        const scriptRoot = parse(Lang.TypeScript, scriptContent).root();
+        imports.push(...extractJsTsImportsFromNode(scriptRoot));
+      }
+    } catch (err) {
+      logger.warn("Failed to parse Svelte/Vue file for imports", { error: String(err) });
+    }
+    return imports;
+  }
+
   // ── AST-based extraction for languages with grammar support ───────────
   try {
     const sgNode = parse(lang, source).root();
@@ -74,38 +137,7 @@ export function extractImports(source: string, lang: Lang | string, _ext: string
       case "JavaScript":
       case "TypeScript":
       case "Tsx": {
-        // import ... from "..."
-        for (const node of sgNode.findAll({ rule: { kind: "import_statement" } })) {
-          const sourceNode = node.find({ rule: { kind: "string" } });
-          if (sourceNode) {
-            const spec = sourceNode.text().replace(/['"]/g, "");
-            imports.push({ moduleSpecifier: spec, isDynamic: false });
-          }
-        }
-        // require("...")
-        for (const node of sgNode.findAll({ rule: { kind: "call_expression" } })) {
-          const text = node.text();
-          const match = text.match(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/);
-          if (match) {
-            imports.push({ moduleSpecifier: match[1], isDynamic: false });
-          }
-        }
-        // dynamic import("...")
-        for (const node of sgNode.findAll({ rule: { kind: "call_expression" } })) {
-          const text = node.text();
-          const match = text.match(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/);
-          if (match) {
-            imports.push({ moduleSpecifier: match[1], isDynamic: true });
-          }
-        }
-        // export ... from "..."
-        for (const node of sgNode.findAll({ rule: { kind: "export_statement" } })) {
-          const sourceNode = node.find({ rule: { kind: "string" } });
-          if (sourceNode) {
-            const spec = sourceNode.text().replace(/['"]/g, "");
-            imports.push({ moduleSpecifier: spec, isDynamic: false });
-          }
-        }
+        imports.push(...extractJsTsImportsFromNode(sgNode));
         break;
       }
 

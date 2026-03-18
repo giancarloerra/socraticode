@@ -457,7 +457,8 @@ When `codebase_graph_build` is called:
    │   ├── C/C++: #include
    │   ├── Swift: import
    │   ├── Bash: source, . (dot)
-   │   └── Dart/Lua: regex-based extraction
+   │   ├── Dart/Lua: regex-based extraction
+   │   └── Svelte/Vue: HTML parse → <script> extraction → re-parse as TypeScript
    ├── Update progress: filesProcessed++
    └── Return ImportInfo[] with module specifiers
 

@@ -188,6 +188,228 @@ function hello() {
     });
   });
 
+  // ── CSS @import in Svelte/Vue <style> blocks ────────────────────────────
+
+  describe("CSS @import in Svelte style blocks", () => {
+    it("extracts @import from <style> block", () => {
+      const source = `
+<script lang="ts">
+  import { onMount } from "svelte";
+</script>
+
+<style>
+  @import "./variables.css";
+  @import "../mixins.scss";
+</style>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("svelte");
+      expect(specs).toContain("./variables.css");
+      expect(specs).toContain("../mixins.scss");
+    });
+
+    it("extracts @import url(...) variant", () => {
+      const source = `
+<style>
+  @import url("./theme.css");
+</style>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      expect(imports.some((i) => i.moduleSpecifier === "./theme.css")).toBe(true);
+    });
+
+    it("skips external URLs", () => {
+      const source = `
+<style>
+  @import "https://fonts.googleapis.com/css2?family=Inter";
+  @import "./local.css";
+</style>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).not.toContain("https://fonts.googleapis.com/css2?family=Inter");
+      expect(specs).toContain("./local.css");
+    });
+
+    it("extracts @import from <style global>", () => {
+      const source = `
+<style global>
+  @import "./global-reset.css";
+</style>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      expect(imports.some((i) => i.moduleSpecifier === "./global-reset.css")).toBe(true);
+    });
+
+    it("marks CSS imports with isCssImport flag", () => {
+      const source = `
+<script lang="ts">
+  import { onMount } from "svelte";
+</script>
+
+<style>
+  @import "./variables.css";
+</style>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      const jsImport = imports.find((i) => i.moduleSpecifier === "svelte");
+      const cssImport = imports.find((i) => i.moduleSpecifier === "./variables.css");
+
+      expect(jsImport?.isCssImport).toBeFalsy();
+      expect(cssImport?.isCssImport).toBe(true);
+    });
+
+    it("handles no style block", () => {
+      const source = `
+<script>
+  import { writable } from "svelte/store";
+</script>
+<div>content</div>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      // Should only have script imports, no CSS imports
+      expect(imports).toHaveLength(1);
+      expect(imports[0].moduleSpecifier).toBe("svelte/store");
+    });
+  });
+
+  describe("CSS @import in Vue style blocks", () => {
+    it("extracts @import from <style> block", () => {
+      const source = `
+<script lang="ts">
+  import { ref } from "vue";
+</script>
+
+<template>
+  <div>content</div>
+</template>
+
+<style scoped>
+  @import "./component.css";
+</style>
+`;
+      const imports = extractImports(source, "vue", ".vue");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("vue");
+      expect(specs).toContain("./component.css");
+    });
+
+    it("extracts @import url(...) from Vue style", () => {
+      const source = `
+<style>
+  @import url("./variables.scss");
+  @import url('./mixins.css');
+</style>
+`;
+      const imports = extractImports(source, "vue", ".vue");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("./variables.scss");
+      expect(specs).toContain("./mixins.css");
+    });
+
+    it("extracts @import from all style tag variants (scoped, module, lang)", () => {
+      const source = `
+<script lang="ts">
+  import { ref } from "vue";
+</script>
+
+<template><div /></template>
+
+<style lang="scss" scoped>
+  @import "./scoped-scss.scss";
+</style>
+
+<style module>
+  @import "./module.css";
+</style>
+
+<style lang="less">
+  @import "./theme.less";
+</style>
+`;
+      const imports = extractImports(source, "vue", ".vue");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("vue");
+      expect(specs).toContain("./scoped-scss.scss");
+      expect(specs).toContain("./module.css");
+      expect(specs).toContain("./theme.less");
+    });
+  });
+
+  // ── Stylus @require in style blocks ──────────────────────────────────────
+
+  describe("Stylus @require in style blocks", () => {
+    it("extracts @require from Svelte <style lang=\"stylus\">", () => {
+      const source = `
+<script>
+  import App from "./App.svelte";
+</script>
+
+<style lang="stylus">
+  @require "./variables.styl"
+  @require "../mixins.styl"
+</style>
+`;
+      const imports = extractImports(source, "svelte", ".svelte");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("./variables.styl");
+      expect(specs).toContain("../mixins.styl");
+    });
+
+    it("extracts @import and @require from Vue <style lang=\"stylus\">", () => {
+      const source = `
+<template><div /></template>
+
+<style lang="stylus">
+  @import "./base.styl"
+  @require "./theme.styl"
+</style>
+`;
+      const imports = extractImports(source, "vue", ".vue");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("./base.styl");
+      expect(specs).toContain("./theme.styl");
+    });
+  });
+
+  // ── Standalone CSS ──────────────────────────────────────────────────────
+
+  describe("Standalone CSS imports", () => {
+    it("extracts @import from CSS files", () => {
+      const source = `
+@import "./variables.css";
+@import url("./mixins.css");
+
+body { color: red; }
+`;
+      const imports = extractImports(source, Lang.Css, ".css");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).toContain("./variables.css");
+      expect(specs).toContain("./mixins.css");
+    });
+
+    it("skips external URLs in CSS files", () => {
+      const source = `
+@import "https://cdn.example.com/reset.css";
+@import "./local.css";
+`;
+      const imports = extractImports(source, Lang.Css, ".css");
+      const specs = imports.map((i) => i.moduleSpecifier);
+
+      expect(specs).not.toContain("https://cdn.example.com/reset.css");
+      expect(specs).toContain("./local.css");
+    });
+  });
+
   // ── Python ─────────────────────────────────────────────────────────────
 
   describe("Python imports", () => {

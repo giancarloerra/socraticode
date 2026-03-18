@@ -8,6 +8,7 @@ import { Lang, registerDynamicLanguage } from "@ast-grep/napi";
 import { graphCollectionName, projectIdFromPath } from "../config.js";
 import { EXTRA_EXTENSIONS, getLanguageFromExtension, MAX_GRAPH_FILE_BYTES } from "../constants.js";
 import type { CodeGraph, CodeGraphEdge, CodeGraphNode } from "../types.js";
+import { loadPathAliases } from "./graph-aliases.js";
 import { extractImports } from "./graph-imports.js";
 import { resolveImport } from "./graph-resolution.js";
 import { createIgnoreFilter, shouldIgnore } from "./ignore.js";
@@ -313,7 +314,7 @@ export function getAstGrepLang(ext: string): Lang | string | null {
     ".ts": Lang.TypeScript,
     ".tsx": Lang.Tsx,
     ".html": Lang.Html, ".htm": Lang.Html,
-    ".css": Lang.Css, ".scss": Lang.Css,
+    ".css": Lang.Css, ".scss": Lang.Css, ".sass": Lang.Css, ".less": Lang.Css,
   };
   return map[ext] ?? null;
 }
@@ -375,6 +376,7 @@ export async function buildCodeGraph(
   ensureDynamicLanguages();
 
   const resolvedPath = path.resolve(projectPath);
+  const aliases = await loadPathAliases(resolvedPath);
   const files = await getGraphableFiles(resolvedPath, extraExtensions);
   const fileSet = new Set(files);
 
@@ -444,7 +446,9 @@ export async function buildCodeGraph(
       node.imports.push(imp.moduleSpecifier);
 
       // Try to resolve to a project file
-      const resolved = resolveImport(imp.moduleSpecifier, absolutePath, resolvedPath, fileSet, language);
+      // CSS imports from <style> blocks use CSS resolution even when the source file is Svelte/Vue
+      const resolutionLanguage = imp.isCssImport ? "css" : language;
+      const resolved = resolveImport(imp.moduleSpecifier, absolutePath, resolvedPath, fileSet, resolutionLanguage, aliases);
       if (resolved) {
         node.dependencies.push(resolved);
 

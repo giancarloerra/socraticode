@@ -8,6 +8,25 @@ import { logger } from "./logger.js";
 export interface ImportInfo {
   moduleSpecifier: string; // The raw import string
   isDynamic: boolean;
+  isCssImport?: boolean;   // True when extracted from a CSS/style context
+}
+
+/** Extract CSS/SCSS/Stylus @import statements from raw style source text. */
+function extractCssImports(source: string): ImportInfo[] {
+  const imports: ImportInfo[] = [];
+  // CSS/SCSS: @import "./foo.css"; @import url("./foo.css");
+  for (const match of source.matchAll(/@import\s+(?:url\(\s*)?['"]([^'"]+)['"]\s*\)?/gm)) {
+    const spec = match[1];
+    if (spec.startsWith("http://") || spec.startsWith("https://")) continue;
+    imports.push({ moduleSpecifier: spec, isDynamic: false, isCssImport: true });
+  }
+  // Stylus: @require "foo" (quoted form only; bare-identifier syntax not supported)
+  for (const match of source.matchAll(/@require\s+['"]([^'"]+)['"]/gm)) {
+    const spec = match[1];
+    if (spec.startsWith("http://") || spec.startsWith("https://")) continue;
+    imports.push({ moduleSpecifier: spec, isDynamic: false, isCssImport: true });
+  }
+  return imports;
 }
 
 /** Extract JS/TS imports from an ast-grep root node. Shared by JS/TS and Svelte/Vue handlers. */
@@ -100,6 +119,13 @@ export function extractImports(source: string, lang: Lang | string, _ext: string
         const scriptRoot = parse(Lang.TypeScript, scriptContent).root();
         imports.push(...extractJsTsImportsFromNode(scriptRoot));
       }
+
+      // Also extract CSS @import from <style> blocks
+      const styleElements = htmlRoot.findAll({ rule: { kind: "style_element" } });
+      for (const styleEl of styleElements) {
+        const rawText = styleEl.find({ rule: { kind: "raw_text" } });
+        if (rawText) imports.push(...extractCssImports(rawText.text()));
+      }
     } catch (err) {
       logger.warn("Failed to parse Svelte/Vue file for imports", { error: String(err) });
     }
@@ -131,6 +157,11 @@ export function extractImports(source: string, lang: Lang | string, _ext: string
             imports.push({ moduleSpecifier: match[1], isDynamic: false });
           }
         }
+        break;
+      }
+
+      case "Css": {
+        imports.push(...extractCssImports(source));
         break;
       }
 

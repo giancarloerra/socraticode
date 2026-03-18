@@ -817,4 +817,393 @@ describe("graph-resolution", () => {
       expect(result).toBeNull();
     });
   });
+
+  // ── Path alias resolution ──────────────────────────────────────────────
+
+  describe("Path alias resolution", () => {
+    it("resolves $lib/ alias to src/lib/", () => {
+      project = createTempProject({
+        "src/lib/Component.svelte": "",
+        "src/routes/page.svelte": "",
+      });
+
+      const aliases = {
+        entries: new Map([["$lib/", ["src/lib/"]]]),
+      };
+
+      const result = resolveImport(
+        "$lib/Component.svelte",
+        path.join(project.root, "src/routes/page.svelte"),
+        project.root,
+        project.fileSet,
+        "svelte",
+        aliases,
+      );
+
+      expect(result).toBe("src/lib/Component.svelte");
+    });
+
+    it("resolves @/ alias to src/", () => {
+      project = createTempProject({
+        "src/utils/helper.ts": "",
+        "src/index.ts": "",
+      });
+
+      const aliases = {
+        entries: new Map([["@/", ["src/"]]]),
+      };
+
+      const result = resolveImport(
+        "@/utils/helper",
+        path.join(project.root, "src/index.ts"),
+        project.root,
+        project.fileSet,
+        "typescript",
+        aliases,
+      );
+
+      expect(result).toBe("src/utils/helper.ts");
+    });
+
+    it("resolves alias with extensionless import", () => {
+      project = createTempProject({
+        "src/lib/utils.ts": "",
+        "src/app.ts": "",
+      });
+
+      const aliases = {
+        entries: new Map([["$lib/", ["src/lib/"]]]),
+      };
+
+      const result = resolveImport(
+        "$lib/utils",
+        path.join(project.root, "src/app.ts"),
+        project.root,
+        project.fileSet,
+        "typescript",
+        aliases,
+      );
+
+      expect(result).toBe("src/lib/utils.ts");
+    });
+
+    it("returns null when alias does not match any file", () => {
+      project = createTempProject({
+        "src/index.ts": "",
+      });
+
+      const aliases = {
+        entries: new Map([["$lib/", ["src/lib/"]]]),
+      };
+
+      const result = resolveImport(
+        "$lib/NonExistent",
+        path.join(project.root, "src/index.ts"),
+        project.root,
+        project.fileSet,
+        "typescript",
+        aliases,
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it("falls back to null without aliases (backwards compatible)", () => {
+      project = createTempProject({
+        "src/index.ts": "",
+      });
+
+      const result = resolveImport(
+        "$lib/Component",
+        path.join(project.root, "src/index.ts"),
+        project.root,
+        project.fileSet,
+        "typescript",
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it("tries multiple alias targets in order (first match wins)", () => {
+      project = createTempProject({
+        "src/types.ts": "",
+        "generated/types.ts": "",
+        "src/index.ts": "",
+      });
+
+      const aliases = {
+        entries: new Map([["@/", ["src", "generated"]]]),
+      };
+
+      const result = resolveImport(
+        "@/types",
+        path.join(project.root, "src/index.ts"),
+        project.root,
+        project.fileSet,
+        "typescript",
+        aliases,
+      );
+
+      // src/ is listed first, so it should win over generated/
+      expect(result).toBe("src/types.ts");
+    });
+
+    it("falls back to second alias target when first has no match", () => {
+      project = createTempProject({
+        "generated/types.ts": "",
+        "src/index.ts": "",
+      });
+
+      const aliases = {
+        entries: new Map([["@/", ["src", "generated"]]]),
+      };
+
+      const result = resolveImport(
+        "@/types",
+        path.join(project.root, "src/index.ts"),
+        project.root,
+        project.fileSet,
+        "typescript",
+        aliases,
+      );
+
+      expect(result).toBe("generated/types.ts");
+    });
+
+    it("resolves CSS alias imports", () => {
+      project = createTempProject({
+        "src/lib/styles/variables.css": "",
+        "src/app.css": "",
+      });
+
+      const aliases = {
+        entries: new Map([["$lib/", ["src/lib/"]]]),
+      };
+
+      const result = resolveImport(
+        "$lib/styles/variables.css",
+        path.join(project.root, "src/app.css"),
+        project.root,
+        project.fileSet,
+        "css",
+        aliases,
+      );
+
+      expect(result).toBe("src/lib/styles/variables.css");
+    });
+
+    it("resolves extensionless CSS alias import via extension-try loop", () => {
+      project = createTempProject({
+        "src/lib/styles/variables.scss": "",
+        "src/app.css": "",
+      });
+
+      const aliases = {
+        entries: new Map([["$lib/", ["src/lib"]]]),
+      };
+
+      const result = resolveImport(
+        "$lib/styles/variables",
+        path.join(project.root, "src/app.css"),
+        project.root,
+        project.fileSet,
+        "css",
+        aliases,
+      );
+
+      expect(result).toBe("src/lib/styles/variables.scss");
+    });
+
+    it("resolves CSS relative imports", () => {
+      project = createTempProject({
+        "src/styles/variables.css": "",
+        "src/styles/main.css": "",
+      });
+
+      const result = resolveImport(
+        "./variables.css",
+        path.join(project.root, "src/styles/main.css"),
+        project.root,
+        project.fileSet,
+        "css",
+      );
+
+      expect(result).toBe("src/styles/variables.css");
+    });
+
+    it("resolves SCSS relative imports (language=scss)", () => {
+      project = createTempProject({
+        "src/styles/theme.scss": "",
+        "src/styles/main.scss": "",
+      });
+
+      const result = resolveImport(
+        "./theme.scss",
+        path.join(project.root, "src/styles/main.scss"),
+        project.root,
+        project.fileSet,
+        "scss",
+      );
+
+      expect(result).toBe("src/styles/theme.scss");
+    });
+
+    it("resolves SCSS partial with _ prefix", () => {
+      project = createTempProject({
+        "src/styles/_variables.scss": "",
+        "src/styles/main.scss": "",
+      });
+
+      const result = resolveImport(
+        "./variables",
+        path.join(project.root, "src/styles/main.scss"),
+        project.root,
+        project.fileSet,
+        "scss",
+      );
+
+      expect(result).toBe("src/styles/_variables.scss");
+    });
+
+    it("resolves SCSS partial via alias", () => {
+      project = createTempProject({
+        "src/lib/styles/_colors.scss": "",
+        "src/app.scss": "",
+      });
+
+      const aliases = {
+        entries: new Map([["$lib/", ["src/lib"]]]),
+      };
+
+      const result = resolveImport(
+        "$lib/styles/colors",
+        path.join(project.root, "src/app.scss"),
+        project.root,
+        project.fileSet,
+        "scss",
+        aliases,
+      );
+
+      expect(result).toBe("src/lib/styles/_colors.scss");
+    });
+
+    it("prefers non-partial over partial when both exist", () => {
+      project = createTempProject({
+        "src/styles/variables.scss": "",
+        "src/styles/_variables.scss": "",
+        "src/styles/main.scss": "",
+      });
+
+      const result = resolveImport(
+        "./variables",
+        path.join(project.root, "src/styles/main.scss"),
+        project.root,
+        project.fileSet,
+        "scss",
+      );
+
+      // Direct match with extension should win before trying _ prefix
+      expect(result).toBe("src/styles/variables.scss");
+    });
+
+    it("resolves SCSS partial when import has explicit .scss extension", () => {
+      project = createTempProject({
+        "src/styles/_variables.scss": "",
+        "src/styles/main.scss": "",
+      });
+
+      const result = resolveImport(
+        "./variables.scss",
+        path.join(project.root, "src/styles/main.scss"),
+        project.root,
+        project.fileSet,
+        "scss",
+      );
+
+      expect(result).toBe("src/styles/_variables.scss");
+    });
+
+    it("resolves Less relative imports (language=less)", () => {
+      project = createTempProject({
+        "src/styles/theme.less": "",
+        "src/styles/main.less": "",
+      });
+
+      const result = resolveImport(
+        "./theme.less",
+        path.join(project.root, "src/styles/main.less"),
+        project.root,
+        project.fileSet,
+        "less",
+      );
+
+      expect(result).toBe("src/styles/theme.less");
+    });
+
+    it("resolves Sass relative imports (language=sass)", () => {
+      project = createTempProject({
+        "src/styles/_base.sass": "",
+        "src/styles/main.sass": "",
+      });
+
+      const result = resolveImport(
+        "./base",
+        path.join(project.root, "src/styles/main.sass"),
+        project.root,
+        project.fileSet,
+        "sass",
+      );
+
+      expect(result).toBe("src/styles/_base.sass");
+    });
+
+    it("exact alias pattern only matches exact specifier", () => {
+      project = createTempProject({
+        "src/index.ts": "",
+        "src/utils/helper.ts": "",
+      });
+
+      const aliases = {
+        entries: new Map([["~", ["src"]]]),
+      };
+
+      // "~utils/helper" should NOT match exact alias "~"
+      const noMatch = resolveImport(
+        "~utils/helper",
+        path.join(project.root, "src/index.ts"),
+        project.root,
+        project.fileSet,
+        "typescript",
+        aliases,
+      );
+      expect(noMatch).toBeNull();
+
+      // Exact "~" should resolve to src directory index
+      const exactMatch = resolveImport(
+        "~",
+        path.join(project.root, "src/index.ts"),
+        project.root,
+        project.fileSet,
+        "typescript",
+        aliases,
+      );
+      expect(exactMatch).toBe("src/index.ts");
+    });
+
+    it("returns null for bare CSS package specifier", () => {
+      project = createTempProject({
+        "src/styles/main.css": "",
+      });
+
+      const result = resolveImport(
+        "normalize.css",
+        path.join(project.root, "src/styles/main.css"),
+        project.root,
+        project.fileSet,
+        "css",
+      );
+
+      expect(result).toBeNull();
+    });
+  });
 });

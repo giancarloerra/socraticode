@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giancarlo Erra - Altaire Limited
 import path from "node:path";
+import type { PathAliases } from "./graph-aliases.js";
 
 // ── Module resolution ────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ export function resolveImport(
   projectPath: string,
   fileSet: Set<string>,
   language: string,
+  aliases?: PathAliases,
 ): string | null {
   // Skip obvious external/stdlib modules
   if (isExternalModule(moduleSpecifier, language)) return null;
@@ -25,13 +27,26 @@ export function resolveImport(
     case "typescript":
     case "svelte":
     case "vue": {
+      const jsExtensions = [".svelte", ".vue", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
       // Relative imports: ./foo, ../bar
       if (moduleSpecifier.startsWith(".")) {
-        return resolveRelativePath(moduleSpecifier, sourceDir, projectPath, fileSet, [
-          ".svelte", ".vue", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-        ]);
+        return resolveRelativePath(moduleSpecifier, sourceDir, projectPath, fileSet, jsExtensions);
       }
-      return null; // npm packages
+      // Try path alias resolution
+      return resolveAliasPath(moduleSpecifier, projectPath, fileSet, jsExtensions, aliases);
+    }
+
+    case "css":
+    case "scss":
+    case "sass":
+    case "less": {
+      const cssExtensions = [".css", ".scss", ".sass", ".less", ".styl"];
+      // CSS @import: ./variables.css, ../mixins.scss
+      if (moduleSpecifier.startsWith(".")) {
+        return resolveRelativePath(moduleSpecifier, sourceDir, projectPath, fileSet, cssExtensions);
+      }
+      // Try path alias resolution (e.g., $lib/styles/vars.css)
+      return resolveAliasPath(moduleSpecifier, projectPath, fileSet, cssExtensions, aliases);
     }
 
     case "python": {
@@ -240,6 +255,36 @@ function isExternalModule(spec: string, language: string): boolean {
   }
 }
 
+/** Try resolving a module specifier via path aliases (tsconfig/jsconfig paths) */
+function resolveAliasPath(
+  moduleSpecifier: string,
+  projectPath: string,
+  fileSet: Set<string>,
+  extensions: string[],
+  aliases?: PathAliases,
+): string | null {
+  if (!aliases?.entries) return null;
+  for (const [prefix, targets] of aliases.entries) {
+    // Wildcard aliases end with "/" (from "$lib/*") — match as prefix
+    // Exact aliases (no trailing "/") — match only the exact specifier
+    const isWildcard = prefix.endsWith("/");
+    const matches = isWildcard
+      ? moduleSpecifier.startsWith(prefix)
+      : moduleSpecifier === prefix;
+
+    if (matches) {
+      const rest = moduleSpecifier.slice(prefix.length);
+      for (const target of targets) {
+        const resolved = resolveRelativePath(
+          path.join(target, rest), projectPath, projectPath, fileSet, extensions,
+        );
+        if (resolved) return resolved;
+      }
+    }
+  }
+  return null;
+}
+
 /** Resolve a potentially extensionless path to an actual file */
 function resolveRelativePath(
   modulePath: string,
@@ -277,6 +322,22 @@ function resolveRelativePath(
   for (const ext of extensions) {
     const indexFile = path.join(relPath, `index${ext}`);
     if (fileSet.has(indexFile)) return indexFile;
+  }
+
+  // SCSS/Sass partial: @import "variables" → _variables.scss
+  if (extensions.some((e) => [".scss", ".sass", ".less", ".styl"].includes(e))) {
+    const dir = path.dirname(relPath);
+    const base = path.basename(relPath);
+    if (!base.startsWith("_")) {
+      // Try _name (direct)
+      const partial = path.join(dir, `_${base}`);
+      if (fileSet.has(partial)) return partial;
+      // Try _name with extensions
+      for (const ext of extensions) {
+        const partialExt = path.join(dir, `_${base}${ext}`);
+        if (fileSet.has(partialExt)) return partialExt;
+      }
+    }
   }
 
   // Python: try __init__.py

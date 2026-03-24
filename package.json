@@ -15,6 +15,7 @@
     "lint": "biome check src/ tests/",
     "lint:fix": "biome check --write src/ tests/",
     "release": "release-it",
+    "prepublishOnly": "tsc",
     "release:dry": "release-it --dry-run",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit/",

@@ -114,6 +114,20 @@ claude mcp add socraticode -- npx -y socraticode
 
 > **Updating:** `npx` caches the package after the first run. To get the latest version, clear the cache and restart your MCP host: `rm -rf ~/.npm/_npx && claude mcp restart socraticode`. Alternatively, use `npx -y socraticode@latest` in your config to always check for updates on startup (slightly slower).
 
+**OpenCode** — add to your `opencode.json` (or `opencode.jsonc`):
+
+```json
+{
+  "mcp": {
+    "socraticode": {
+      "type": "local",
+      "command": ["npx", "-y", "socraticode"],
+      "enabled": true
+    }
+  }
+}
+```
+
 **OpenAI Codex CLI** — add to `~/.codex/config.toml`:
 
 ```toml

@@ -354,6 +354,90 @@ export async function searchChunks(
   }));
 }
 
+/** Merge results from multiple collection queries using client-side Reciprocal Rank Fusion.
+ * Deduplicates by relativePath — first (higher-priority) collection wins on conflict.
+ * Exported for unit testing. */
+export function mergeMultiCollectionResults(
+  collectionResults: Array<{ label: string; results: SearchResult[] }>,
+  limit: number,
+): SearchResult[] {
+  const RRF_K = 60;
+  const scored = new Map<string, SearchResult & { rrfScore: number }>();
+
+  for (const { label, results } of collectionResults) {
+    for (let rank = 0; rank < results.length; rank++) {
+      const r = results[rank];
+      const key = r.relativePath;
+      const rrfContribution = 1 / (RRF_K + rank + 1);
+
+      const existing = scored.get(key);
+      if (existing) {
+        existing.rrfScore += rrfContribution;
+        // Keep the version from the higher-priority (earlier) collection
+      } else {
+        scored.set(key, { ...r, project: label, rrfScore: rrfContribution });
+      }
+    }
+  }
+
+  return Array.from(scored.values())
+    .sort((a, b) => b.rrfScore - a.rrfScore)
+    .slice(0, limit)
+    .map(({ rrfScore, ...result }) => ({
+      ...result,
+      score: rrfScore,
+    }));
+}
+
+/** Search across multiple collections in parallel with client-side RRF fusion and deduplication.
+ * Each collection's results are queried independently, then merged using Reciprocal Rank Fusion.
+ * When the same relativePath appears in multiple collections, the result from the
+ * earlier (higher-priority) collection wins.
+ *
+ * @param collections - Array of { name, label } where label identifies the source project
+ *   in results. Order defines priority for deduplication (first wins).
+ * @param query - Natural language search query.
+ * @param limit - Maximum total results to return after merge.
+ * @param fileFilter - Optional relativePath filter applied to every collection.
+ * @param languageFilter - Optional language filter applied to every collection.
+ */
+export async function searchMultipleCollections(
+  collections: Array<{ name: string; label: string }>,
+  query: string,
+  limit: number = 10,
+  fileFilter?: string,
+  languageFilter?: string,
+): Promise<SearchResult[]> {
+  if (collections.length === 0) return [];
+  if (collections.length === 1) {
+    const results = await searchChunks(collections[0].name, query, limit, fileFilter, languageFilter);
+    return results.map((r) => ({ ...r, project: collections[0].label }));
+  }
+
+  // Query all collections in parallel, requesting extra candidates for RRF re-ranking
+  const perCollectionLimit = Math.max(limit * 2, 20);
+  const collectionResults: Array<{ label: string; results: SearchResult[] }> = [];
+
+  const allResults = await Promise.all(
+    collections.map(async ({ name, label }) => {
+      try {
+        const results = await searchChunks(name, query, perCollectionLimit, fileFilter, languageFilter);
+        return { label, results };
+      } catch (err) {
+        logger.warn("searchMultipleCollections: collection query failed, skipping", {
+          collection: name,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return { label, results: [] as SearchResult[] };
+      }
+    }),
+  );
+
+  collectionResults.push(...allResults);
+
+  return mergeMultiCollectionResults(collectionResults, limit);
+}
+
 /** Hybrid search with arbitrary payload filters.
  * Used by context artifacts to filter by artifactName. */
 export async function searchChunksWithFilter(

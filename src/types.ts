@@ -39,6 +39,8 @@ export interface SearchResult {
   endLine: number;
   language: string;
   score: number;
+  /** Source project label (set when searching across multiple collections) */
+  project?: string;
 }
 
 export interface HealthStatus {

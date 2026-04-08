@@ -4,16 +4,22 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { collectionName, contextCollectionName, graphCollectionName, loadLinkedProjects, projectIdFromPath, resolveLinkedCollections } from "../../src/config.js";
+import { collectionName, contextCollectionName, detectGitBranch, graphCollectionName, loadLinkedProjects, projectIdFromPath, resolveLinkedCollections, sanitizeBranchName } from "../../src/config.js";
 
 describe("config", () => {
-  // Clean up env override between tests
+  // Clean up env overrides between tests
   const originalEnv = process.env.SOCRATICODE_PROJECT_ID;
+  const originalBranchAware = process.env.SOCRATICODE_BRANCH_AWARE;
   afterEach(() => {
     if (originalEnv === undefined) {
       delete process.env.SOCRATICODE_PROJECT_ID;
     } else {
       process.env.SOCRATICODE_PROJECT_ID = originalEnv;
+    }
+    if (originalBranchAware === undefined) {
+      delete process.env.SOCRATICODE_BRANCH_AWARE;
+    } else {
+      process.env.SOCRATICODE_BRANCH_AWARE = originalBranchAware;
     }
   });
 
@@ -275,6 +281,101 @@ describe("config", () => {
       expect(collections[1].label).toBe("linked-lib");
       // Different collection names
       expect(collections[0].name).not.toBe(collections[1].name);
+    });
+  });
+
+  // ── Branch awareness ────────────────────────────────────────────────
+
+  describe("sanitizeBranchName", () => {
+    it("passes through simple branch names", () => {
+      expect(sanitizeBranchName("main")).toBe("main");
+      expect(sanitizeBranchName("develop")).toBe("develop");
+    });
+
+    it("replaces slashes with underscores", () => {
+      expect(sanitizeBranchName("feat/my-feature")).toBe("feat_my-feature");
+    });
+
+    it("handles deeply nested branch names", () => {
+      expect(sanitizeBranchName("feature/JIRA-123/some-work")).toBe(
+        "feature_JIRA-123_some-work",
+      );
+    });
+
+    it("collapses consecutive underscores", () => {
+      expect(sanitizeBranchName("feat//double")).toBe("feat_double");
+    });
+
+    it("strips leading and trailing underscores", () => {
+      expect(sanitizeBranchName("/leading")).toBe("leading");
+      expect(sanitizeBranchName("trailing/")).toBe("trailing");
+    });
+
+    it("preserves hyphens", () => {
+      expect(sanitizeBranchName("my-branch-name")).toBe("my-branch-name");
+    });
+
+    it("replaces special characters", () => {
+      expect(sanitizeBranchName("feat@v2.0")).toBe("feat_v2_0");
+    });
+  });
+
+  describe("detectGitBranch", () => {
+    it("detects a branch in the current repo", () => {
+      // This test runs inside the socraticode git repo
+      const branch = detectGitBranch(process.cwd());
+      expect(branch).toBeTruthy();
+      expect(typeof branch).toBe("string");
+    });
+
+    it("returns null for non-git directories", () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "socraticode-nogit-"));
+      try {
+        expect(detectGitBranch(tmpDir)).toBeNull();
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("projectIdFromPath with SOCRATICODE_BRANCH_AWARE", () => {
+    it("does not include branch suffix by default", () => {
+      const id = projectIdFromPath("/some/project/path");
+      expect(id).toMatch(/^[0-9a-f]{12}$/);
+      expect(id).not.toContain("__");
+    });
+
+    it("appends branch suffix when SOCRATICODE_BRANCH_AWARE=true", () => {
+      process.env.SOCRATICODE_BRANCH_AWARE = "true";
+      // Run from current repo directory so git detection works
+      const id = projectIdFromPath(process.cwd());
+      expect(id).toContain("__");
+      // Hash part + __ + branch
+      const parts = id.split("__");
+      expect(parts[0]).toMatch(/^[0-9a-f]{12}$/);
+      expect(parts[1]).toBeTruthy();
+    });
+
+    it("produces valid Qdrant collection names with branch suffix", () => {
+      process.env.SOCRATICODE_BRANCH_AWARE = "true";
+      const id = projectIdFromPath(process.cwd());
+      const coll = collectionName(id);
+      // Must be valid Qdrant name: [a-zA-Z0-9_-]+
+      expect(coll).toMatch(/^[a-zA-Z0-9_-]+$/);
+    });
+
+    it("does not append branch when SOCRATICODE_PROJECT_ID is set", () => {
+      process.env.SOCRATICODE_BRANCH_AWARE = "true";
+      process.env.SOCRATICODE_PROJECT_ID = "explicit-id";
+      const id = projectIdFromPath(process.cwd());
+      expect(id).toBe("explicit-id");
+      expect(id).not.toContain("__");
+    });
+
+    it("does not append branch when SOCRATICODE_BRANCH_AWARE is not true", () => {
+      process.env.SOCRATICODE_BRANCH_AWARE = "false";
+      const id = projectIdFromPath(process.cwd());
+      expect(id).toMatch(/^[0-9a-f]{12}$/);
     });
   });
 });

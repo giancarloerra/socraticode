@@ -1,8 +1,42 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giancarlo Erra - Altaire Limited
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+
+// ── Branch detection ─────────────────────────────────────────────────────
+
+/**
+ * Detect the current git branch for a project path.
+ * Returns `null` if the path is not inside a git repository or detection fails.
+ */
+export function detectGitBranch(projectPath: string): string | null {
+  try {
+    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: path.resolve(projectPath),
+      encoding: "utf-8",
+      timeout: 5000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    // "HEAD" is returned for detached HEAD state — treat as no branch
+    return branch && branch !== "HEAD" ? branch : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sanitize a git branch name for use in Qdrant collection names.
+ * Replaces characters outside `[a-zA-Z0-9_-]` with underscores,
+ * collapses consecutive underscores, and strips leading/trailing underscores.
+ */
+export function sanitizeBranchName(branch: string): string {
+  return branch
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+}
 
 /**
  * Generate a stable project ID from an absolute folder path.
@@ -12,6 +46,10 @@ import path from "node:path";
  * of hashing the path.  This lets multiple directory trees (e.g. git
  * worktrees) share a single Qdrant index.  The value must contain only
  * characters valid in a Qdrant collection name (`[a-zA-Z0-9_-]`).
+ *
+ * When `SOCRATICODE_BRANCH_AWARE` is `"true"` (and no explicit project ID
+ * is set), the current git branch name is appended to the hash, producing
+ * a separate set of collections per branch.
  */
 export function projectIdFromPath(folderPath: string): string {
   const explicit = process.env.SOCRATICODE_PROJECT_ID?.trim();
@@ -24,7 +62,17 @@ export function projectIdFromPath(folderPath: string): string {
     return explicit;
   }
   const normalized = path.resolve(folderPath);
-  return createHash("sha256").update(normalized).digest("hex").slice(0, 12);
+  let id = createHash("sha256").update(normalized).digest("hex").slice(0, 12);
+
+  // Branch-aware mode: append sanitized branch name to isolate per-branch indexes
+  if (process.env.SOCRATICODE_BRANCH_AWARE === "true") {
+    const branch = detectGitBranch(normalized);
+    if (branch) {
+      id = `${id}__${sanitizeBranchName(branch)}`;
+    }
+  }
+
+  return id;
 }
 
 /**

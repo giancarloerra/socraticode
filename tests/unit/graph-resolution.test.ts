@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveImport } from "../../src/services/graph-resolution.js";
+import { buildJvmSuffixMap, resolveImport } from "../../src/services/graph-resolution.js";
 
 // ── Helper to create temp project layouts ─────────────────────────────
 
@@ -1201,6 +1201,130 @@ describe("graph-resolution", () => {
         project.root,
         project.fileSet,
         "css",
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
+  // ── buildJvmSuffixMap + multi-module resolution ──────────────────────────
+
+  describe("JVM multi-module resolution (buildJvmSuffixMap)", () => {
+    it("builds a suffix map keyed by class path after src/main/java", () => {
+      project = createTempProject({
+        [`module-a${path.sep}sub${path.sep}src${path.sep}main${path.sep}java${path.sep}com${path.sep}example${path.sep}Foo.java`]: "",
+        [`module-b${path.sep}src${path.sep}main${path.sep}kotlin${path.sep}com${path.sep}example${path.sep}Bar.kt`]: "",
+        [`module-c${path.sep}src${path.sep}main${path.sep}scala${path.sep}com${path.sep}example${path.sep}Baz.scala`]: "",
+      });
+
+      const map = buildJvmSuffixMap(project.fileSet);
+
+      expect(map.has(`com${path.sep}example${path.sep}Foo.java`)).toBe(true);
+      expect(map.has(`com${path.sep}example${path.sep}Bar.kt`)).toBe(true);
+      expect(map.has(`com${path.sep}example${path.sep}Baz.scala`)).toBe(true);
+    });
+
+    it("returns empty map when project has no JVM files", () => {
+      project = createTempProject({ "index.ts": "", "style.css": "" });
+      const map = buildJvmSuffixMap(project.fileSet);
+      expect(map.size).toBe(0);
+    });
+
+    it("ignores JVM files outside src/main/<lang> (e.g. test sources)", () => {
+      project = createTempProject({
+        // test source — should be ignored
+        [`module-a${path.sep}src${path.sep}test${path.sep}java${path.sep}com${path.sep}example${path.sep}FooTest.java`]: "",
+        // main source — should be registered
+        [`module-a${path.sep}src${path.sep}main${path.sep}java${path.sep}com${path.sep}example${path.sep}Foo.java`]: "",
+      });
+
+      const map = buildJvmSuffixMap(project.fileSet);
+      expect(map.has(`com${path.sep}example${path.sep}Foo.java`)).toBe(true);
+      expect(map.has(`com${path.sep}example${path.sep}FooTest.java`)).toBe(false);
+    });
+
+    it("resolves a Java import in a multi-module Maven project via suffix map", () => {
+      // Simulate: module-sso/module-sso-service/src/main/java/cn/sino/sso/UserService.java
+      const userServicePath =
+        `module-sso${path.sep}module-sso-service${path.sep}src${path.sep}main${path.sep}java${path.sep}cn${path.sep}sino${path.sep}sso${path.sep}UserService.java`;
+      const callerPath =
+        `module-opt${path.sep}src${path.sep}main${path.sep}java${path.sep}cn${path.sep}sino${path.sep}opt${path.sep}Service.java`;
+
+      project = createTempProject({
+        [userServicePath]: "",
+        [callerPath]: "",
+      });
+
+      const jvmSuffixMap = buildJvmSuffixMap(project.fileSet);
+
+      const result = resolveImport(
+        "cn.sino.sso.UserService",
+        path.join(project.root, callerPath),
+        project.root,
+        project.fileSet,
+        "java",
+        undefined,
+        jvmSuffixMap,
+      );
+
+      expect(result).toBe(userServicePath);
+    });
+
+    it("resolves Kotlin import in multi-module project via suffix map", () => {
+      const barPath =
+        `module-core${path.sep}src${path.sep}main${path.sep}kotlin${path.sep}com${path.sep}example${path.sep}Bar.kt`;
+      const callerPath =
+        `module-api${path.sep}src${path.sep}main${path.sep}kotlin${path.sep}com${path.sep}example${path.sep}Caller.kt`;
+
+      project = createTempProject({ [barPath]: "", [callerPath]: "" });
+
+      const jvmSuffixMap = buildJvmSuffixMap(project.fileSet);
+      const result = resolveImport(
+        "com.example.Bar",
+        path.join(project.root, callerPath),
+        project.root,
+        project.fileSet,
+        "kotlin",
+        undefined,
+        jvmSuffixMap,
+      );
+
+      expect(result).toBe(barPath);
+    });
+
+    it("returns null when class exists nowhere in the project", () => {
+      project = createTempProject({
+        [`module-a${path.sep}src${path.sep}main${path.sep}java${path.sep}com${path.sep}example${path.sep}Foo.java`]: "",
+      });
+
+      const jvmSuffixMap = buildJvmSuffixMap(project.fileSet);
+      const result = resolveImport(
+        "com.example.NonExistent",
+        path.join(project.root, `module-a${path.sep}src${path.sep}main${path.sep}java${path.sep}com${path.sep}example${path.sep}Foo.java`),
+        project.root,
+        project.fileSet,
+        "java",
+        undefined,
+        jvmSuffixMap,
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it("still returns null for java stdlib even with suffix map", () => {
+      project = createTempProject({
+        [`module-a${path.sep}src${path.sep}main${path.sep}java${path.sep}java${path.sep}util${path.sep}List.java`]: "",
+      });
+
+      const jvmSuffixMap = buildJvmSuffixMap(project.fileSet);
+      const result = resolveImport(
+        "java.util.List",
+        path.join(project.root, `module-a${path.sep}src${path.sep}main${path.sep}java${path.sep}Caller.java`),
+        project.root,
+        project.fileSet,
+        "java",
+        undefined,
+        jvmSuffixMap,
       );
 
       expect(result).toBeNull();

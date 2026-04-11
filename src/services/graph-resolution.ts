@@ -6,6 +6,52 @@ import type { PathAliases } from "./graph-aliases.js";
 // ── Module resolution ────────────────────────────────────────────────────
 
 /**
+ * Build a suffix lookup map for JVM (Java/Kotlin/Scala) files in multi-module projects.
+ *
+ * For a Maven/Gradle multi-module layout such as:
+ *   module-a/sub-module/src/main/java/com/example/Foo.java
+ * the map entry is:
+ *   key:   "com/example/Foo.java"  (platform-normalised with path.sep)
+ *   value: "module-a/sub-module/src/main/java/com/example/Foo.java"
+ *
+ * This enables O(1) resolution of fully-qualified class names that cannot be
+ * found via the standard prefix-based scan (e.g. src/main/java/…).
+ *
+ * Call this once per graph build and pass the result to resolveImport.
+ */
+export function buildJvmSuffixMap(fileSet: Set<string>): Map<string, string> {
+  const map = new Map<string, string>();
+  const jvmExts = new Set([".java", ".kt", ".kts", ".scala"]);
+
+  for (const f of fileSet) {
+    if (!jvmExts.has(path.extname(f))) continue;
+
+    // Split on either separator so the logic works on Windows and POSIX.
+    const parts = f.split(/[\\/]/);
+
+    // Find the first occurrence of src/main/<lang> boundary.
+    const jvmLangs = new Set(["java", "kotlin", "scala"]);
+    const idx = parts.findIndex(
+      (p, i) =>
+        p === "src" &&
+        parts[i + 1] === "main" &&
+        jvmLangs.has(parts[i + 2]),
+    );
+
+    if (idx !== -1) {
+      // classPath = everything after src/main/<lang>, e.g. com/example/Foo.java
+      const classPath = parts.slice(idx + 3).join(path.sep);
+      // Only register the first match to avoid ambiguity for duplicate class names.
+      if (!map.has(classPath)) {
+        map.set(classPath, f);
+      }
+    }
+  }
+
+  return map;
+}
+
+/**
  * Resolve a module specifier to a relative file path within the project.
  * Returns null if the module is external (e.g., npm package, stdlib).
  */
@@ -16,6 +62,7 @@ export function resolveImport(
   fileSet: Set<string>,
   language: string,
   aliases?: PathAliases,
+  jvmSuffixMap?: Map<string, string>,
 ): string | null {
   // Skip obvious external/stdlib modules
   if (isExternalModule(moduleSpecifier, language)) return null;
@@ -89,11 +136,12 @@ export function resolveImport(
       // com.example.Foo → com/example/Foo.java (or .kt, .scala)
       const filePath = moduleSpecifier.replace(/\./g, "/");
       const exts = language === "java" ? [".java"] : language === "kotlin" ? [".kt", ".kts"] : [".scala"];
-      // Try direct resolution from project root
+
+      // 1. Try direct resolution from project root (single-module layout).
       const direct = resolveRelativePath(filePath, projectPath, projectPath, fileSet, exts);
       if (direct) return direct;
 
-      // Try common source directories (Maven/Gradle convention)
+      // 2. Try common source directories (Maven/Gradle single-module convention).
       const jvmSrcDirs = [
         `src/main/${language}`,  // src/main/java, src/main/kotlin, src/main/scala
         "src/main",
@@ -105,6 +153,18 @@ export function resolveImport(
         );
         if (inSrc) return inSrc;
       }
+
+      // 3. Fallback: suffix-map lookup for multi-module Maven/Gradle projects.
+      //    e.g. module-a/sub/src/main/java/com/example/Foo.java
+      //    The map is built once per graph build (O(n)) and looked up in O(1).
+      if (jvmSuffixMap) {
+        for (const ext of exts) {
+          const classPath = filePath.replace(/\//g, path.sep) + ext;
+          const found = jvmSuffixMap.get(classPath);
+          if (found) return found;
+        }
+      }
+
       return null;
     }
 

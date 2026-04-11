@@ -10,7 +10,7 @@ import { EXTRA_EXTENSIONS, getLanguageFromExtension, MAX_GRAPH_FILE_BYTES } from
 import type { CodeGraph, CodeGraphEdge, CodeGraphNode } from "../types.js";
 import { loadPathAliases } from "./graph-aliases.js";
 import { extractImports } from "./graph-imports.js";
-import { resolveImport } from "./graph-resolution.js";
+import { buildJvmSuffixMap, resolveImport } from "./graph-resolution.js";
 import { createIgnoreFilter, shouldIgnore } from "./ignore.js";
 import { logger } from "./logger.js";
 import { deleteGraphData, getGraphMetadata, loadGraphData, saveGraphData } from "./qdrant.js";
@@ -390,6 +390,16 @@ export async function buildCodeGraph(
   const nodesMap = new Map<string, CodeGraphNode>();
   const edges: CodeGraphEdge[] = [];
 
+  // Build a suffix lookup map for JVM multi-module projects (Java/Kotlin/Scala).
+  // This resolves FQNs like com.example.Foo when the class lives under a nested
+  // src/main/java/ tree (e.g. module-a/sub/src/main/java/com/example/Foo.java).
+  // Cost: O(n) once here, O(1) per import lookup — negligible vs. full AST parse.
+  const hasJvm = files.some((f) => {
+    const e = path.extname(f).toLowerCase();
+    return e === ".java" || e === ".kt" || e === ".kts" || e === ".scala";
+  });
+  const jvmSuffixMap = hasJvm ? buildJvmSuffixMap(fileSet) : undefined;
+
   for (const relPath of files) {
     const ext = path.extname(relPath).toLowerCase();
     const lang = getAstGrepLang(ext);
@@ -448,7 +458,7 @@ export async function buildCodeGraph(
       // Try to resolve to a project file
       // CSS imports from <style> blocks use CSS resolution even when the source file is Svelte/Vue
       const resolutionLanguage = imp.isCssImport ? "css" : language;
-      const resolved = resolveImport(imp.moduleSpecifier, absolutePath, resolvedPath, fileSet, resolutionLanguage, aliases);
+      const resolved = resolveImport(imp.moduleSpecifier, absolutePath, resolvedPath, fileSet, resolutionLanguage, aliases, jvmSuffixMap);
       if (resolved) {
         node.dependencies.push(resolved);
 

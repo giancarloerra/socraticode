@@ -32,4 +32,5 @@ coverage/
 .mcpregistry_*
 
 # Snyk Security Extension - AI Rules (auto-generated)
-.github/instructions/snyk_rules.instructions.md
+# Personal instructions (Copilot)
+.github/instructions/

@@ -250,7 +250,7 @@ export function extractImports(source: string, lang: Lang | string, _ext: string
           if (reqMatch) {
             imports.push({
               moduleSpecifier: reqMatch[1],
-              isDynamic: text.includes("require_relative"),
+              isDynamic: false,
             });
           }
         }

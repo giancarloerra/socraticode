@@ -129,10 +129,15 @@ export function loadEmbeddingConfig(): EmbeddingConfig {
 
   // ── Model & dimensions (provider-specific defaults) ─────────────────
   const embeddingModel = process.env.EMBEDDING_MODEL || providerDefaults.model;
-  const embeddingDimensions = parseInt(
-    process.env.EMBEDDING_DIMENSIONS || String(providerDefaults.dimensions),
-    10,
+  const rawDimensions = Number(
+    process.env.EMBEDDING_DIMENSIONS || providerDefaults.dimensions,
   );
+  if (!Number.isInteger(rawDimensions) || rawDimensions <= 0) {
+    throw new Error(
+      `Invalid EMBEDDING_DIMENSIONS: "${process.env.EMBEDDING_DIMENSIONS}". Must be a positive integer.`,
+    );
+  }
+  const embeddingDimensions = rawDimensions;
 
   const contextLengthEnv = process.env.EMBEDDING_CONTEXT_LENGTH;
 
@@ -143,7 +148,15 @@ export function loadEmbeddingConfig(): EmbeddingConfig {
     embeddingModel,
     embeddingDimensions,
     embeddingContextLength: contextLengthEnv
-      ? parseInt(contextLengthEnv, 10)
+      ? (() => {
+          const parsed = Number(contextLengthEnv);
+          if (!Number.isInteger(parsed) || parsed <= 0) {
+            throw new Error(
+              `Invalid EMBEDDING_CONTEXT_LENGTH: "${contextLengthEnv}". Must be a positive integer.`,
+            );
+          }
+          return parsed;
+        })()
       : guessContextLength(embeddingModel),
     ollamaApiKey: process.env.OLLAMA_API_KEY || undefined,
   };

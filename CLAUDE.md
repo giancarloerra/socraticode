@@ -55,7 +55,6 @@ before reading any files directly.
 | Verify index is up to date | `codebase_status` |
 | Discover what project knowledge (schemas, specs, configs) is available | `codebase_context` |
 | Find database tables, API endpoints, infra configs | `codebase_context_search` |
-```
 
 > **Why semantic search first?** A single `codebase_search` call returns ranked, deduplicated snippets from across the entire codebase in milliseconds. This gives you a broad map at negligible token cost — far cheaper than opening files speculatively. Once you know which files matter, targeted reading is both faster and more accurate. That said, grep remains the right tool when you have an exact string or pattern — use whichever fits the query.
 

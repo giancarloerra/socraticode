@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'IMPORTANT: If you notice that SocratiCode MCP tools appear with BOTH a plugin prefix (e.g. mcp__plugin_socraticode_socraticode__codebase_search) AND a standalone prefix (e.g. mcp__socraticode__codebase_search), the user has a duplicate configuration. Advise them to remove the standalone MCP by running: claude mcp remove socraticode — the plugin already provides the MCP server.'",
+            "command": "echo 'IMPORTANT: If you notice that SocratiCode MCP tools appear with BOTH a plugin prefix (e.g. mcp__plugin_socraticode_socraticode__codebase_search) AND a standalone prefix (e.g. mcp__socraticode__codebase_search), the user has a duplicate configuration. Advise them to remove the standalone MCP by running: claude mcp remove socraticode - the plugin already provides the MCP server.'",
             "timeout": 5
           }
         ]

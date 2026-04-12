@@ -127,7 +127,7 @@ function findNestedGitignores(rootPath: string, currentPath: string, ig: Ignore)
 
     if (fs.existsSync(gitignorePath)) {
       const content = fs.readFileSync(gitignorePath, "utf-8");
-      const relDir = path.relative(rootPath, dirPath);
+      const relDir = path.relative(rootPath, dirPath).split(path.sep).join("/");
 
       // Prefix each pattern with the relative directory
       const lines = content.split("\n");
@@ -158,5 +158,6 @@ function findNestedGitignores(rootPath: string, currentPath: string, ig: Ignore)
  * Check if a relative path should be ignored.
  */
 export function shouldIgnore(ig: Ignore, relativePath: string): boolean {
-  return ig.ignores(relativePath);
+  const normalized = relativePath.split(path.sep).join("/");
+  return ig.ignores(normalized);
 }

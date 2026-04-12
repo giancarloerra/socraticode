@@ -211,7 +211,7 @@ tests/
 ├── helpers/
 │   ├── fixtures.ts          # Test fixture utilities (temp projects, Docker checks)
 │   └── setup.ts             # Integration test infrastructure (Qdrant client, cleanup)
-├── unit/                    # 460 tests — no Docker required
+├── unit/                    # 608 tests — no Docker required
 ├── integration/             # 137 tests — requires Docker
 └── e2e/                     # 20 tests — full lifecycle
 
@@ -515,7 +515,7 @@ Uses depth-first search (DFS) with a recursion stack to find cycles in the direc
 
 ## Testing
 
-SocratiCode uses **vitest** as its test framework with **634 tests** across three layers.
+SocratiCode uses **vitest** as its test framework with **765 tests** across three layers.
 
 ### Running Tests
 
@@ -543,7 +543,7 @@ npm run test:coverage
 
 | Layer | Directory | Tests | Docker | Description |
 |-------|-----------|-------|--------|-------------|
-| Unit | `tests/unit/` | 477 | No | Pure logic: config, constants, ignore rules, cross-process locking, logging, graph analysis, import extraction, path resolution, startup lifecycle |
+| Unit | `tests/unit/` | 608 | No | Pure logic: config, constants, ignore rules, cross-process locking, logging, graph analysis, import extraction, path resolution, startup lifecycle |
 | Integration | `tests/integration/` | 137 | Yes | Real Docker containers: Qdrant CRUD, real Ollama embeddings, indexer, watcher, code graph, all 21 MCP tools |
 | E2E | `tests/e2e/` | 20 | Yes | Full lifecycle: health check → index → search → graph build/query/stats → watch → remove |
 

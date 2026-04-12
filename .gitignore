@@ -33,4 +33,5 @@ coverage/
 
 # Snyk Security Extension - AI Rules (auto-generated)
 # Personal instructions (Copilot)
+.github/copilot-instructions.md
 .github/instructions/

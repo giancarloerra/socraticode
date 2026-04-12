@@ -279,6 +279,7 @@ describe("watcher (unit)", () => {
 
       // package-lock.json has .json extension which IS in SUPPORTED_EXTENSIONS,
       // so the update should still trigger for that event
+      expect(mockUpdateProjectIndex).toHaveBeenCalledTimes(1);
       vi.useRealTimers();
     });
 

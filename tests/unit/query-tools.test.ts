@@ -304,6 +304,6 @@ describe("codebase_search — includeLinked parameter", () => {
 
     // Should have the file but no project tag brackets
     expect(output).toContain("src/index.ts");
-    expect(output).not.toMatch(/\[.*-.*\]/); // no [project-name] tag
+    expect(output).not.toMatch(/\[[^\]]+\]\s*src\//); // no [project-name] tag before file path
   });
 });

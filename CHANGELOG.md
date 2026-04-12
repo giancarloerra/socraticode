@@ -115,8 +115,3 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) a
 ### Bug Fixes
 
 * add mcpName and read version dynamically from package.json ([88c0e8f](https://github.com/giancarloerra/socraticode/commit/88c0e8fee39c7fb733bdec4657d2eaf2c355292e))
-
-# Changelog
-
-All notable changes to SocratiCode are documented here.
-This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).

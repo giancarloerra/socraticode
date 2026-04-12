@@ -25,7 +25,10 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
-const currentLevel: LogLevel = (process.env.SOCRATICODE_LOG_LEVEL as LogLevel) || "info";
+const envLevel = process.env.SOCRATICODE_LOG_LEVEL?.toLowerCase();
+const currentLevel: LogLevel = envLevel && Object.hasOwn(LOG_LEVELS, envLevel)
+  ? (envLevel as LogLevel)
+  : "info";
 const logFilePath: string | undefined = process.env.SOCRATICODE_LOG_FILE || undefined;
 
 // Write a separator so you can tell where each server session begins

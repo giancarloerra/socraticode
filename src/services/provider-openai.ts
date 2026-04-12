@@ -117,6 +117,9 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
 
   async embedSingle(text: string): Promise<number[]> {
     const results = await this.embed([text]);
+    if (results.length === 0) {
+      throw new Error("Embedding failed: no result returned");
+    }
     return results[0];
   }
 
@@ -151,10 +154,11 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     model: string,
     dimensions: number,
   ): Promise<number[][]> {
+    const supportsDimensions = model.startsWith("text-embedding-3");
     const response = await client.embeddings.create({
       model,
       input: texts,
-      dimensions,
+      ...(supportsDimensions ? { dimensions } : {}),
     });
 
     // OpenAI returns embeddings sorted by index, but we ensure order

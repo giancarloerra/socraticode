@@ -117,6 +117,9 @@ export class GoogleEmbeddingProvider implements EmbeddingProvider {
 
   async embedSingle(text: string): Promise<number[]> {
     const results = await this.embed([text]);
+    if (results.length === 0) {
+      throw new Error("Embedding failed: no result returned");
+    }
     return results[0];
   }
 

@@ -110,10 +110,9 @@ describe("code-graph service", () => {
       const helpersNode = graph.nodes.find((n) =>
         n.relativePath.includes("helpers.ts"),
       );
-      if (helpersNode) {
-        // If the graph correctly resolves imports, helpers should have dependents
-        expect(helpersNode.dependents.length).toBeGreaterThanOrEqual(0);
-      }
+      expect(helpersNode).toBeDefined();
+      // If the graph correctly resolves imports, helpers should have dependents
+      expect(helpersNode?.dependents.length).toBeGreaterThan(0);
     });
 
     it("includes Python files in the graph", async () => {

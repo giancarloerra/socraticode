@@ -4,6 +4,21 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.6.0](https://github.com/giancarloerra/socraticode/compare/v1.5.0...v1.6.0) (2026-04-16)
+
+### Features
+
+* support global config fallback and configurable batch size ([9d04c44](https://github.com/giancarloerra/socraticode/commit/9d04c4443a7b0892548868fe04e59f9a35e43dcf))
+
+### Bug Fixes
+
+* resolve relative paths for global config fallback and strict batch size validation ([49b5b35](https://github.com/giancarloerra/socraticode/commit/49b5b35bff2809c17f1096cb62db7670503594aa))
+
+### Documentation
+
+* add CodeRabbit review expectations to PR template and contributing guide ([afd2da2](https://github.com/giancarloerra/socraticode/commit/afd2da2771e5ebe9cd81e391179adb769463ddb8))
+* add Discord community, Cloud section, and tool portability to README ([a8b069a](https://github.com/giancarloerra/socraticode/commit/a8b069a900d5a4a20023b995ea0ecfe6b237cb7b))
+
 ## [1.5.0](https://github.com/giancarloerra/socraticode/compare/v1.4.1...v1.5.0) (2026-04-13)
 
 ### Features

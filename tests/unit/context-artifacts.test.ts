@@ -207,11 +207,12 @@ describe("loadConfig", () => {
     try {
       const config = await loadConfig(projectDir);
       expect(config).not.toBeNull();
+      const artifacts = config?.artifacts ?? [];
       // Relative path should be resolved against globalDir, not projectDir
-      expect(path.isAbsolute(config!.artifacts![0].path)).toBe(true);
-      expect(config!.artifacts![0].path).toBe(path.resolve(globalDir, "docs/schema.sql"));
+      expect(path.isAbsolute(artifacts[0].path)).toBe(true);
+      expect(artifacts[0].path).toBe(path.resolve(globalDir, "docs/schema.sql"));
       // Absolute path should remain unchanged
-      expect(config!.artifacts![1].path).toBe("/absolute/path/schema.sql");
+      expect(artifacts[1].path).toBe("/absolute/path/schema.sql");
     } finally {
       if (originalEnv === undefined) {
         delete process.env.SOCRATICODE_GLOBAL_CONFIG_DIR;
@@ -231,8 +232,9 @@ describe("loadConfig", () => {
     });
     const config = await loadConfig(projectDir);
     expect(config).not.toBeNull();
+    const artifacts = config?.artifacts ?? [];
     // Project-level config should keep relative paths as-is (resolved downstream)
-    expect(config!.artifacts![0].path).toBe("./schema.sql");
+    expect(artifacts[0].path).toBe("./schema.sql");
   });
 
   it("prefers project-level config over global config", async () => {

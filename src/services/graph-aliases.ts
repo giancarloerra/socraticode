@@ -65,7 +65,7 @@ const MAX_EXTENDS_DEPTH = 10;
  */
 async function followExtendsChain(
   configPath: string,
-  projectPath: string,
+  _projectPath: string,
 ): Promise<PathAliases> {
   const visited = new Set<string>();
   let currentPath = configPath;

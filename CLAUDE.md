@@ -19,6 +19,10 @@ before reading any files directly.
 2. **Follow the graph before following imports.**
    Use `codebase_graph_query` to see what a file imports and what depends on it before
    diving into its contents. This prevents unnecessary reading of transitive dependencies.
+   - **Before modifying or deleting a file**, check its dependents with `codebase_graph_query`
+     to understand the blast radius.
+   - **When planning a refactor**, use the graph to identify all affected files before
+     making changes.
 
 3. **Read files only after narrowing down via search.**
    Once search results clearly point to 1–3 files, read only the relevant sections.
@@ -26,6 +30,8 @@ before reading any files directly.
 
 4. **Use `codebase_graph_circular` when debugging unexpected behavior.**
    Circular dependencies cause subtle runtime issues; check for them proactively.
+   Also run `codebase_graph_circular` when you notice import-related errors or unexpected
+   initialization order.
 
 5. **Check `codebase_status` if search returns no results.**
    The project may not be indexed yet. Run `codebase_index` if needed, then wait for
@@ -50,6 +56,7 @@ before reading any files directly.
 | Find a specific function, constant, or type | `codebase_search` (exact name) or grep if you know already the exact string |
 | Find exact error messages, log strings, or regex patterns | grep / ripgrep |
 | See what a file imports or what depends on it | `codebase_graph_query` |
+| Check blast radius before modifying or deleting a file | `codebase_graph_query` (look at dependents) |
 | Spot architectural problems | `codebase_graph_circular`, `codebase_graph_stats` |
 | Visualise module structure | `codebase_graph_visualize` |
 | Verify index is up to date | `codebase_status` |

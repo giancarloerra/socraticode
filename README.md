@@ -169,6 +169,7 @@ SocratiCode is available as a native plugin on multiple AI coding platforms. Plu
 | Claude Code | `claude plugin marketplace add giancarloerra/socraticode` — [full instructions](#claude-code-plugin-recommended-for-claude-code-users) |
 | Cursor | `/add-plugin https://github.com/giancarloerra/socraticode` |
 | VS Code Copilot | Command Palette → `Chat: Install Plugin From Source` → `https://github.com/giancarloerra/socraticode` |
+| Zed | Add as a custom MCP server in Zed settings — [config example](#zed) |
 | Gemini CLI | `gemini extensions install https://github.com/giancarloerra/socraticode` |
 | OpenAI Codex | No public plugin directory yet — use the [MCP config](#quick-start) or see **Codex local install** below |
 
@@ -313,7 +314,20 @@ User: "Are there any circular dependencies?"
 
 > **Claude Code plugin users**: These instructions are included automatically as skills in the SocratiCode plugin. You don't need to copy them into `CLAUDE.md`. The section below is for non-Claude Code hosts (VS Code, Cursor, Claude Desktop, etc.).
 
-For best results, add instructions like the following to your AI assistant's system prompt, `CLAUDE.md`, `AGENTS.md`, or equivalent instructions file. The core principle: **search before reading**. The index gives you a map of the codebase in milliseconds; raw file reading is expensive and context-consuming.
+For best results, add instructions like the following to your AI assistant's project-level instructions file. The core principle: **search before reading**. The index gives you a map of the codebase in milliseconds; raw file reading is expensive and context-consuming.
+
+**Where to place these instructions** (per IDE):
+
+| IDE / Tool | Instructions file |
+|:-----------|:-----------------|
+| Claude Code | `CLAUDE.md` at project root (auto-loaded). Plugin users get this via skills automatically. |
+| Cursor | `AGENTS.md` at project root, or `.cursor/rules/socraticode.mdc` for a dedicated rule file |
+| VS Code Copilot | `.github/copilot-instructions.md`, or a custom instructions file in your VS Code User prompts folder |
+| Zed | `AGENTS.md` at project root (Zed auto-reads it), or use the Rules Library to create a default rule |
+| Windsurf | `.windsurfrules` at project root |
+| Claude Desktop / Cline / Roo Code | Add directly to your system prompt configuration |
+
+> **Why this matters**: Installing the MCP server alone gives your agent access to SocratiCode tools, but the agent still decides when to use them. Adding these instructions to your project ensures the agent consistently prefers SocratiCode search over raw file reads, uses the graph for dependency-aware tasks, and follows the search-before-reading workflow.
 
 ```markdown
 ## Codebase Search (SocratiCode)
@@ -337,6 +351,10 @@ before reading any files directly.
 2. **Follow the graph before following imports.**
    Use `codebase_graph_query` to see what a file imports and what depends on it before
    diving into its contents. This prevents unnecessary reading of transitive dependencies.
+   - **Before modifying or deleting a file**, check its dependents with `codebase_graph_query`
+     to understand the blast radius.
+   - **When planning a refactor**, use the graph to identify all affected files before
+     making changes.
 
 3. **Read files only after narrowing down via search.**
    Once search results clearly point to 1–3 files, read only the relevant sections.
@@ -344,6 +362,8 @@ before reading any files directly.
 
 4. **Use `codebase_graph_circular` when debugging unexpected behavior.**
    Circular dependencies cause subtle runtime issues; check for them proactively.
+   Also run `codebase_graph_circular` when you notice import-related errors or unexpected
+   initialization order.
 
 5. **Check `codebase_status` if search returns no results.**
    The project may not be indexed yet. Run `codebase_index` if needed, then wait for
@@ -368,6 +388,7 @@ before reading any files directly.
 | Find a specific function, constant, or type | `codebase_search` (exact name) or grep if you know already the exact string |
 | Find exact error messages, log strings, or regex patterns | grep / ripgrep |
 | See what a file imports or what depends on it | `codebase_graph_query` |
+| Check blast radius before modifying or deleting a file | `codebase_graph_query` (look at dependents) |
 | Spot architectural problems | `codebase_graph_circular`, `codebase_graph_stats` |
 | Visualise module structure | `codebase_graph_visualize` |
 | Verify index is up to date | `codebase_status` |
@@ -456,6 +477,41 @@ Requires Node.js 18+ and Docker (running). Already covered in [Quick Start](#qui
       "args": ["-y", "socraticode"]
     }
 ```
+
+#### Zed
+
+Add SocratiCode as a custom MCP server in Zed's settings (`Zed > Settings > Settings` or `cmd+,`). Under `context_servers`, add:
+
+```json
+{
+  "context_servers": {
+    "socraticode": {
+      "command": "npx",
+      "args": ["-y", "socraticode"],
+      "env": {}
+    }
+  }
+}
+```
+
+To pass environment variables (e.g. for cloud embeddings or branch-aware indexing), add them to the `env` object:
+
+```json
+{
+  "context_servers": {
+    "socraticode": {
+      "command": "npx",
+      "args": ["-y", "socraticode"],
+      "env": {
+        "EMBEDDING_PROVIDER": "openai",
+        "OPENAI_API_KEY": "sk-..."
+      }
+    }
+  }
+}
+```
+
+Zed auto-reads `AGENTS.md` from the project root for agent instructions. Copy the [Agent Instructions](#agent-instructions) block into your project's `AGENTS.md` to ensure the agent uses SocratiCode tools effectively. You can also add them as a default rule in Zed's Rules Library (`agent: open rules library`).
 
 #### From source (for contributors)
 

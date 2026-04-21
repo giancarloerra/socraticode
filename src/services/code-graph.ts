@@ -130,15 +130,34 @@ export async function getOrBuildGraph(
   return plain;
 }
 
+/** Options for `rebuildGraph` controlling which layers are rebuilt. */
+export interface RebuildGraphOptions {
+  /** Extra file extensions to treat as graph nodes. */
+  extraExtensions?: Set<string>;
+  /**
+   * When `true`, skip the symbol-graph extraction + persistence step entirely.
+   * The file-import graph is still rebuilt and persisted. The caller is then
+   * expected to update the symbol graph incrementally via
+   * `updateChangedFilesSymbolGraph` from `symbol-graph-incremental.ts`.
+   * Default: `false`.
+   */
+  skipSymbolGraph?: boolean;
+}
+
 /** Force-rebuild, cache, and persist a graph.
  * If a build is already in progress for this project, returns the existing
  * in-flight promise (deduplication — same as indexer concurrency guard).
+ *
+ * Backward-compatible: accepts either `extraExtensions` (legacy positional
+ * Set) or a `RebuildGraphOptions` object.
  */
 export async function rebuildGraph(
   projectPath: string,
-  extraExtensions?: Set<string>,
+  optsOrExtras?: Set<string> | RebuildGraphOptions,
 ): Promise<CodeGraph> {
   const resolved = path.resolve(projectPath);
+  const opts: RebuildGraphOptions =
+    optsOrExtras instanceof Set ? { extraExtensions: optsOrExtras } : (optsOrExtras ?? {});
 
   // Concurrency guard: if already building, return the existing promise
   const existing = graphBuildPromises.get(resolved);
@@ -148,7 +167,7 @@ export async function rebuildGraph(
   }
 
   // Start tracked build
-  const promise = doRebuildGraph(resolved, extraExtensions);
+  const promise = doRebuildGraph(resolved, opts);
   graphBuildPromises.set(resolved, promise);
 
   try {
@@ -162,7 +181,7 @@ export async function rebuildGraph(
 /** Internal: performs the actual graph rebuild with progress tracking */
 async function doRebuildGraph(
   resolvedPath: string,
-  extraExtensions?: Set<string>,
+  opts: RebuildGraphOptions,
 ): Promise<CodeGraph> {
   const progress: GraphBuildProgress = {
     startedAt: Date.now(),
@@ -174,7 +193,7 @@ async function doRebuildGraph(
 
   try {
     graphCache.delete(resolvedPath);
-    const built = await buildCodeGraph(resolvedPath, extraExtensions, progress);
+    const built = await buildCodeGraph(resolvedPath, opts.extraExtensions, progress);
     const graph: CodeGraph = { nodes: built.nodes, edges: built.edges };
     graphCache.set(resolvedPath, graph);
 
@@ -184,18 +203,21 @@ async function doRebuildGraph(
     const graphCollName = graphCollectionName(projectId);
     await saveGraphData(graphCollName, resolvedPath, graph);
 
-    // Build & persist symbol graph (resolution + sharded persistence)
-    try {
-      progress.phase = "resolving symbols";
-      resolveCallSites(graph, built.symbolsByFile, built.outgoingCallsByFile);
+    // Build & persist symbol graph (resolution + sharded persistence) — unless
+    // the caller asked to skip it (Phase F watcher path).
+    if (!opts.skipSymbolGraph) {
+      try {
+        progress.phase = "resolving symbols";
+        resolveCallSites(graph, built.symbolsByFile, built.outgoingCallsByFile);
 
-      progress.phase = "persisting symbols";
-      await persistSymbolGraph(projectId, resolvedPath, built.symbolsByFile, built.outgoingCallsByFile);
-    } catch (err) {
-      logger.warn("Symbol graph build failed (file-import graph saved)", {
-        projectPath: resolvedPath,
-        error: err instanceof Error ? err.message : String(err),
-      });
+        progress.phase = "persisting symbols";
+        await persistSymbolGraph(projectId, resolvedPath, built.symbolsByFile, built.outgoingCallsByFile);
+      } catch (err) {
+        logger.warn("Symbol graph build failed (file-import graph saved)", {
+          projectPath: resolvedPath,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     lastGraphBuildCompleted.set(resolvedPath, {
@@ -268,7 +290,9 @@ async function persistSymbolGraph(
       const shard = nameShards.get(shardKey);
       if (!shard) continue;
       const ref: SymbolRef = { file, id: sym.id };
-      const existing = shard[sym.name];
+      // Use hasOwn — `shard[sym.name]` would return Object.prototype.constructor
+      // (a function) for symbol names like "constructor" / "toString" / "hasOwnProperty".
+      const existing = Object.hasOwn(shard, sym.name) ? shard[sym.name] : undefined;
       if (existing) existing.push(ref);
       else shard[sym.name] = [ref];
     }

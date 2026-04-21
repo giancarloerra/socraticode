@@ -268,6 +268,8 @@ async function applyRemoval(
   for (const sym of payload.symbols) {
     if (sym.name === "<module>") continue;
     const shard = await getNameShard(nameShardKey(sym.name));
+    // Use hasOwn — `shard[sym.name]` for "constructor" returns a function.
+    if (!Object.hasOwn(shard, sym.name)) continue;
     const refs = shard[sym.name];
     if (!refs) continue;
     const filtered = refs.filter((r) => r.file !== payload.file);
@@ -305,7 +307,9 @@ async function applyAddition(
     if (sym.name === "<module>") continue;
     const shard = await getNameShard(nameShardKey(sym.name));
     const ref: SymbolRef = { file: payload.file, id: sym.id };
-    const existing = shard[sym.name];
+    // Use hasOwn — `shard[sym.name]` would return Object.prototype.constructor
+    // (a function) for symbol names like "constructor" / "toString".
+    const existing = Object.hasOwn(shard, sym.name) ? shard[sym.name] : undefined;
     if (existing) {
       // De-dup
       if (!existing.some((e) => e.id === ref.id && e.file === ref.file)) {

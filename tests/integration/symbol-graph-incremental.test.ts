@@ -129,5 +129,60 @@ describe.skipIf(!dockerAvailable)(
       const after = await loadFilePayload(projectId, rel);
       expect(after).toBeNull();
     });
+
+    it("handles symbols whose names collide with Object.prototype keys (regression)", async () => {
+      // Regression for the "existing.push is not a function" crash hit on
+      // SocratiCode itself: symbols named `constructor` / `toString` /
+      // `hasOwnProperty` previously short-circuited bracket lookup on a
+      // plain `{}` shard to the prototype value (a function), then
+      // `existing.push(...)` blew up.
+      const rel = "src/proto-keys.ts";
+      const filePath = path.join(fixture.root, rel);
+      fs.writeFileSync(
+        filePath,
+        [
+          "export class A {",
+          "  constructor() {}",
+          "  toString() { return \"a\"; }",
+          "  hasOwnProperty() { return true; }",
+          "}",
+          "",
+          "export function constructor() { return 1; }",
+          "export function toString() { return \"x\"; }",
+          "export function hasOwnProperty() { return false; }",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+      try {
+        // The original crash happened during the *full* persistSymbolGraph
+        // path, so exercise that as well.
+        await rebuildGraph(fixture.root);
+        const meta = await loadSymbolGraphMeta(projectId);
+        expect(meta).not.toBeNull();
+        const payload = await loadFilePayload(projectId, rel);
+        expect(payload).not.toBeNull();
+        const names = payload?.symbols.map((s) => s.name) ?? [];
+        // All three prototype-collision names must be present.
+        expect(names).toEqual(expect.arrayContaining(["constructor", "toString", "hasOwnProperty"]));
+
+        // And the incremental path must also accept them without throwing.
+        // Mutate the file so the incremental layer doesn't skip it as
+        // unchanged (its hash already matches after the full rebuild above).
+        fs.appendFileSync(filePath, "\nexport const PROTO_KEYS_REV = 2;\n", "utf-8");
+        const graph = await rebuildGraph(fixture.root, { skipSymbolGraph: true });
+        const result = await updateChangedFilesSymbolGraph(
+          projectId,
+          fixture.root,
+          graph,
+          [rel],
+          [],
+        );
+        expect(result.fullRebuildRequired).toBe(false);
+        expect(result.filesChanged).toBe(1);
+      } finally {
+        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+      }
+    });
   },
 );

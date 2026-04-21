@@ -36,8 +36,18 @@ import {
   saveProjectMetadata,
   upsertPreEmbeddedChunks,
 } from "./qdrant.js";
+import { updateChangedFilesSymbolGraph } from "./symbol-graph-incremental.js";
+import { loadSymbolGraphMeta } from "./symbol-graph-store.js";
 
 const FILE_SCAN_BATCH = 50; // Number of files to scan/chunk in parallel (I/O only, no network)
+
+/**
+ * Phase F: maximum number of changed/removed files for which the watcher path
+ * patches the symbol graph in-place rather than rebuilding it from scratch.
+ * Above this threshold a full rebuild is faster than re-running per-file
+ * extraction + shard merging, since most shards would be touched anyway.
+ */
+const INCREMENTAL_SYMBOL_THRESHOLD = 50;
 
 /** State for tracking indexed files per project (loaded from Qdrant on first use) */
 const projectHashes = new Map<string, Map<string, string>>();
@@ -1177,31 +1187,73 @@ export async function updateProjectIndex(
 
   // Check for deleted files
   progress.phase = "removing deleted files";
+  const removedRelPaths: string[] = [];
   for (const [filePath] of hashes) {
     if (!currentFileSet.has(filePath)) {
       await deleteFileChunks(collection, filePath);
       hashes.delete(filePath);
       removed++;
+      removedRelPaths.push(filePath);
     }
   }
 
   // Persist updated hashes
   await saveProjectMetadata(collection, resolvedPath, currentFiles.length, hashes.size, hashes, "completed");
 
-  // Auto-rebuild code graph if any files changed
-  // NOTE (Phase F follow-up): this still triggers a full symbol-graph rebuild
-  // on every save. The per-file incremental API in
-  // `services/symbol-graph-incremental.ts` (`updateChangedFilesSymbolGraph`)
-  // is unit-tested and ready, but is not yet wired in here because that
-  // requires splitting `rebuildGraph` into "file-import only" + "symbol
-  // graph optional" modes. Tracked as a follow-up; on large repos users
-  // should run `codebase_update` deliberately rather than via watcher.
+  // Auto-rebuild code graph if any files changed (Phase F).
+  //
+  // Strategy:
+  //   - If a symbol-graph already exists AND the change set is small
+  //     (≤ INCREMENTAL_SYMBOL_THRESHOLD files), do a fast file-import-graph
+  //     rebuild then patch the symbol graph per-file via
+  //     `updateChangedFilesSymbolGraph`.
+  //   - Otherwise fall back to a full `rebuildGraph()` that also rebuilds
+  //     the symbol graph end-to-end.
   if (added > 0 || updated > 0 || removed > 0) {
     progress.phase = "building code graph";
-    onProgress?.("Building code dependency graph...");
+    const projectId = projectIdFromPath(resolvedPath);
+    const totalChanged = changedFiles.length + removedRelPaths.length;
+    const meta = await loadSymbolGraphMeta(projectId).catch(() => null);
+    const useIncremental = meta !== null && totalChanged <= INCREMENTAL_SYMBOL_THRESHOLD;
+
     try {
-      const graph = await rebuildGraph(resolvedPath);
+      onProgress?.(
+        useIncremental
+          ? `Building file graph + incrementally updating ${totalChanged} symbol payload(s)...`
+          : "Building code dependency graph (full rebuild)...",
+      );
+      const graph = await rebuildGraph(resolvedPath, { skipSymbolGraph: useIncremental });
       onProgress?.(`Code graph built: ${graph.nodes.length} files, ${graph.edges.length} edges`);
+
+      if (useIncremental) {
+        try {
+          const result = await updateChangedFilesSymbolGraph(
+            projectId,
+            resolvedPath,
+            graph,
+            changedFiles.map((f) => f.relativePath),
+            removedRelPaths,
+          );
+          if (result.fullRebuildRequired) {
+            // Meta vanished between checks — fall back to a full symbol rebuild.
+            onProgress?.("Symbol graph meta missing — falling back to full rebuild");
+            await rebuildGraph(resolvedPath, { skipSymbolGraph: false });
+          } else {
+            onProgress?.(
+              `Symbol graph patched: +${result.symbolsDelta} symbols, ` +
+                `+${result.edgesDelta} edges (${result.filesChanged} changed, ${result.filesRemoved} removed)`,
+            );
+          }
+        } catch (incErr) {
+          // Last-resort fallback: full rebuild. Never let watcher fail.
+          const incMsg = incErr instanceof Error ? incErr.message : String(incErr);
+          logger.warn("Incremental symbol-graph update failed; falling back to full rebuild", {
+            projectPath: resolvedPath,
+            error: incMsg,
+          });
+          await rebuildGraph(resolvedPath, { skipSymbolGraph: false });
+        }
+      }
     } catch (graphErr) {
       const graphMsg = graphErr instanceof Error ? graphErr.message : String(graphErr);
       logger.warn("Code graph build failed during incremental update (non-fatal)", { projectPath: resolvedPath, error: graphMsg });

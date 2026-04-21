@@ -871,11 +871,37 @@ TypeScript / JavaScript / TSX, Python, Go, Rust, Java, Kotlin, Scala, C#, C, C++
 4. Updates the `SymbolGraphMeta` counts incrementally (`builtAt` refreshed; `unresolvedEdgePct` is left as-is until the next full rebuild).
 5. Returns `fullRebuildRequired: true` if no meta exists — the caller is then expected to fall back to a full `rebuildGraph()`.
 
-**Wiring status**: the API and its integration tests (`tests/integration/symbol-graph-incremental.test.ts`) are in place and green. The watcher path (`services/watcher.ts` → `services/indexer.ts:updateProjectIndex`) **still triggers a full `rebuildGraph()` on every save**. Splitting `rebuildGraph` into "file-import only" + "symbol graph optional" is a follow-up refactor — until that ships, large repos should rely on deliberate `codebase_update` invocations rather than the auto-watcher for symbol-graph freshness. Tracked in `CHANGELOG.md` as a known limitation.
+**Wiring status**: fully wired. `rebuildGraph(projectPath, { skipSymbolGraph: true })` returns just the file-import graph; `services/indexer.ts` (the watcher / `codebase_update` entry point) calls Phase F when:
+
+1. A `SymbolGraphMeta` already exists for the project, **and**
+2. The change set is **≤ 50 files** (`INCREMENTAL_SYMBOL_THRESHOLD` in `services/indexer.ts`).
+
+Above the threshold — or on first index — it falls back to a full `rebuildGraph()` (no `skipSymbolGraph`). End-to-end coverage lives in `tests/integration/symbol-graph-incremental.test.ts` (5 cases including a regression for prototype-key collisions like a method named `constructor`) and in the watcher path itself via `tests/integration/symbol-graph-scale.test.ts`.
 
 #### Scale & smoke benchmarks
 
-`tests/unit/symbol-graph-scale.test.ts` runs CPU-only synthetic benchmarks against the sharding/hashing layer at 10k–100k symbol volumes. Thresholds are intentionally loose (>10× regression to fail) — the goal is to catch order-of-magnitude regressions before they reach a real codebase, not micro-benchmark stability. Real-world numbers (Qdrant round-trips, end-to-end build time on N-thousand-file projects) are not pinned in CI; see the integration suite for the closest approximation.
+Two complementary harnesses:
+
+- **`tests/unit/symbol-graph-scale.test.ts`** — CPU-only sharding/hashing micro-benchmarks at 10k–100k symbol volumes. Loose thresholds; catches order-of-magnitude regressions in pure-data structures.
+- **`tests/integration/symbol-graph-scale.test.ts`** — full end-to-end against a real Qdrant. Default load: 1000 synthetic Python files × 20 symbols/file = 20,000 symbols. Asserts (1) full rebuild within budget, (2) cold `listSymbols` / `getImpactRadius` queries return within budget, (3) Phase F single-file update is ≥ 4× faster than a full rebuild. Set `SCALE_LARGE=1` to push to 10k files / 200k symbols (manual perf runs only).
+
+##### Real-world benchmark numbers
+
+Captured with `npx tsx scripts/benchmark-graph.ts <path>` against a real Qdrant (Docker, default `qdrant/qdrant:v1.15.5`).
+
+| Date | Repo | Files | Symbols | Call edges | Full build | RSS |
+|------|------|------:|--------:|-----------:|-----------:|----:|
+| 2026-04-21 | `socraticode` (this repo, src + tests) | 82 | 571 | 9914 | 0.90 s | 167 MB |
+| 2026-04-21 | synthetic Python (1000 files / 20k symbols) | 1001 | 20000 | 999 | 6.55 s | ~250 MB |
+
+Phase F single-file update on the 1000-file synthetic repo: **197 ms** (≈33× faster than the 6.55 s full rebuild). Cold queries (`listSymbols("fn_500_5")`, `getImpactRadius("fn_500_0", depth=3)`): **~70 ms** each.
+
+To capture numbers on your own repo:
+
+```bash
+docker compose up -d qdrant   # if not already running
+npx tsx scripts/benchmark-graph.ts /absolute/path/to/repo
+```
 
 ### graph-analysis.ts
 

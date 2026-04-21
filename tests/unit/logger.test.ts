@@ -1,19 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giancarlo Erra - Altaire Limited
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { logger, setMcpLogSender } from "../../src/services/logger.js";
+import { getLogLevel, logger, setLogLevel, setMcpLogSender } from "../../src/services/logger.js";
 
 type SenderFn = Parameters<typeof setMcpLogSender>[0];
 
 describe("logger", () => {
   let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let savedLevel: ReturnType<typeof getLogLevel>;
 
   beforeEach(() => {
+    // Pin the level so tests don't depend on SOCRATICODE_LOG_LEVEL in the
+    // host shell — that env was the suspected cause of the reviewer's
+    // "does not emit debug at the default info level" flake.
+    savedLevel = getLogLevel();
+    setLogLevel("info");
     stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   });
 
   afterEach(() => {
     stderrSpy.mockRestore();
+    setLogLevel(savedLevel);
   });
 
   describe("log methods exist", () => {

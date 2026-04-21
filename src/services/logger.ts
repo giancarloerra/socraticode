@@ -26,9 +26,10 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 };
 
 const envLevel = process.env.SOCRATICODE_LOG_LEVEL?.toLowerCase();
-const currentLevel: LogLevel = envLevel && Object.hasOwn(LOG_LEVELS, envLevel)
+const initialLevel: LogLevel = envLevel && Object.hasOwn(LOG_LEVELS, envLevel)
   ? (envLevel as LogLevel)
   : "info";
+let currentLevel: LogLevel = initialLevel;
 const logFilePath: string | undefined = process.env.SOCRATICODE_LOG_FILE || undefined;
 
 // Write a separator so you can tell where each server session begins
@@ -42,6 +43,20 @@ if (logFilePath) {
 
 function shouldLog(level: LogLevel): boolean {
   return LOG_LEVELS[level] >= LOG_LEVELS[currentLevel];
+}
+
+/**
+ * Override the active log level. Intended for tests so they don't depend on
+ * `SOCRATICODE_LOG_LEVEL` from the host shell. Production callers normally
+ * leave this alone and rely on the env-derived initial level.
+ */
+export function setLogLevel(level: LogLevel): void {
+  currentLevel = level;
+}
+
+/** Get the active log level. Useful for tests asserting their setup. */
+export function getLogLevel(): LogLevel {
+  return currentLevel;
 }
 
 function formatLog(level: LogLevel, message: string, context?: Record<string, unknown>): string {

@@ -91,9 +91,11 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",
+    "@release-it/conventional-changelog": "^11.0.0",
     "@types/node": "^22.13.4",
     "@types/proper-lockfile": "^4.1.4",
     "@vitest/coverage-v8": "^4.0.18",
+    "release-it": "^20.0.1",
     "tsx": "^4.19.4",
     "typescript": "^5.7.3",
     "vitest": "^4.0.18"

@@ -3,6 +3,26 @@
 All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
+
+## [1.7.0](https://github.com/giancarloerra/socraticode/compare/v1.6.1...v1.7.0) (2026-04-27)
+
+### Features
+
+* **impact:** add symbol-level call graph and Impact Analysis tools ([c356c42](https://github.com/giancarloerra/socraticode/commit/c356c42f4fa6dbcee51eb3e0cd4afb1ac04dd6f9))
+* **impact:** close gaps from review — Phase F API, scale + integration tests, language coverage ([2d686a2](https://github.com/giancarloerra/socraticode/commit/2d686a2688946f6a6d2f6cb562ebfe0aae0b7569))
+* **impact:** wire Phase F into watcher; fix prototype-key crash; add real scale test ([4e41b46](https://github.com/giancarloerra/socraticode/commit/4e41b4604ebf2c1a8a23638e8f401e91719d6b8e))
+* **visualize:** add interactive HTML graph explorer; British-English doc sweep ([50d8853](https://github.com/giancarloerra/socraticode/commit/50d8853ea6ee91bf8832d3c10e8da7d8d4bac98e))
+* **visualize:** symbol view as focus graph; UX polish & stats consistency ([e4da769](https://github.com/giancarloerra/socraticode/commit/e4da76979e32f1430767ef3e3069d38a8686e738))
+
+### Bug Fixes
+
+* **visualize:** use function replacers so vendored assets containing $& survive intact ([081606f](https://github.com/giancarloerra/socraticode/commit/081606f9e2133a273ae0ea9c1a758bb2d3a3be93))
+
+### Documentation
+
+* add workflow examples to Context Artifacts section ([2ad7b3d](https://github.com/giancarloerra/socraticode/commit/2ad7b3db5dbe902247daf0231952142fad24fa6b))
+* **readme:** surface impact analysis & portability; fix Claude Code install ([9d11397](https://github.com/giancarloerra/socraticode/commit/9d113975dcdfdd000ba5c17478f02aa2b29d932e))
+
 ## Unreleased
 
 ### Features

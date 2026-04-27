@@ -13,7 +13,7 @@ import type {
 } from "../types.js";
 import { loadPathAliases } from "./graph-aliases.js";
 import { extractImports } from "./graph-imports.js";
-import { buildJvmSuffixMap, resolveImport } from "./graph-resolution.js";
+import { buildCsNamespaceMap, buildJvmSuffixMap, resolveImport } from "./graph-resolution.js";
 import { computeUnresolvedPct, resolveCallSites } from "./graph-symbol-resolution.js";
 import { extractSymbolsAndCalls, rawCallsToUnresolvedEdges } from "./graph-symbols.js";
 import { createIgnoreFilter, shouldIgnore } from "./ignore.js";
@@ -605,12 +605,19 @@ export async function buildCodeGraph(
   // Build a suffix lookup map for JVM multi-module projects (Java/Kotlin/Scala).
   // This resolves FQNs like com.example.Foo when the class lives under a nested
   // src/main/java/ tree (e.g. module-a/sub/src/main/java/com/example/Foo.java).
-  // Cost: O(n) once here, O(1) per import lookup — negligible vs. full AST parse.
+  // Cost: O(n) once here, O(1) per import lookup (negligible vs. full AST parse).
   const hasJvm = files.some((f) => {
     const e = path.extname(f).toLowerCase();
     return e === ".java" || e === ".kt" || e === ".kts" || e === ".scala";
   });
   const jvmSuffixMap = hasJvm ? buildJvmSuffixMap(fileSet) : undefined;
+
+  // Build a namespace lookup map for C# projects. Each `namespace X.Y.Z` block
+  // (or file-scoped `namespace X.Y.Z;`) is recorded so `using X.Y.Z;` directives
+  // can be resolved to the file(s) that contribute to that namespace. Without
+  // this, every C# import resolved to null and the file graph was empty.
+  const hasCs = files.some((f) => path.extname(f).toLowerCase() === ".cs");
+  const csNamespaceMap = hasCs ? buildCsNamespaceMap(fileSet, resolvedPath) : undefined;
 
   for (const relPath of files) {
     const ext = path.extname(relPath).toLowerCase();
@@ -682,7 +689,7 @@ export async function buildCodeGraph(
       // Try to resolve to a project file
       // CSS imports from <style> blocks use CSS resolution even when the source file is Svelte/Vue
       const resolutionLanguage = imp.isCssImport ? "css" : language;
-      const resolved = resolveImport(imp.moduleSpecifier, absolutePath, resolvedPath, fileSet, resolutionLanguage, aliases, jvmSuffixMap);
+      const resolved = resolveImport(imp.moduleSpecifier, absolutePath, resolvedPath, fileSet, resolutionLanguage, aliases, jvmSuffixMap, csNamespaceMap);
       if (resolved) {
         node.dependencies.push(resolved);
 

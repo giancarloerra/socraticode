@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giancarlo Erra - Altaire Limited
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { PathAliases } from "./graph-aliases.js";
 
@@ -52,6 +53,72 @@ export function buildJvmSuffixMap(fileSet: Set<string>): Map<string, string> {
 }
 
 /**
+ * Build a namespace lookup map for C# files.
+ *
+ * Scans every `.cs` file in the project for `namespace X.Y.Z` declarations
+ * (both block-scoped `namespace X { ... }` and file-scoped `namespace X;`
+ * introduced in C# 10) and builds:
+ *
+ *   key:   "App.Services"
+ *   value: ["src/Services/OrderService.cs", "src/Services/UserService.cs"]
+ *
+ * Used to resolve `using App.Services;` to the candidate files that
+ * contribute to that namespace. Without this, every C# `using` resolved
+ * to `null` and C# projects produced an empty file-import graph.
+ *
+ * Files are processed in lexicographic order so the resulting candidate
+ * lists are deterministic across machines and runs. This matters because
+ * multi-file namespaces resolve to `candidates[0]` in `resolveImport`,
+ * and a stable "first" file is required for reproducible graphs.
+ *
+ * Cost: O(n) reads at graph-build time (negligible vs. AST parsing). Files
+ * with no `namespace` declaration are silently skipped. Read failures are
+ * swallowed since this is best-effort.
+ */
+export function buildCsNamespaceMap(
+  fileSet: Set<string>,
+  projectPath: string,
+): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  // Match both `namespace Foo.Bar { ... }` and the file-scoped C# 10+
+  // syntax `namespace Foo.Bar;`. The `^\s*` lets us catch nested
+  // declarations (`namespace Outer { namespace Inner { ... } }`) which
+  // are indented inside the outer block. The dotted-identifier capture
+  // requires each segment to start with a letter or underscore (matching
+  // C# identifier rules) so junk like `namespace 1Foo` is rejected. The
+  // `(?=[;{])` lookahead ensures we only match real declarations and
+  // not stray occurrences of the word `namespace`.
+  const namespaceRegex =
+    /^\s*namespace\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?=[;{])/gm;
+
+  // `fileSet` reflects fs.readdir() traversal order, which POSIX does not
+  // guarantee. Sort .cs paths lexically so candidate lists are stable.
+  const csFiles = [...fileSet]
+    .filter((f) => path.extname(f).toLowerCase() === ".cs")
+    .sort();
+
+  for (const f of csFiles) {
+    let source: string;
+    try {
+      source = readFileSync(path.join(projectPath, f), "utf-8");
+    } catch {
+      continue;
+    }
+    for (const match of source.matchAll(namespaceRegex)) {
+      const ns = match[1];
+      const existing = map.get(ns);
+      if (existing) {
+        if (!existing.includes(f)) existing.push(f);
+      } else {
+        map.set(ns, [f]);
+      }
+    }
+  }
+
+  return map;
+}
+
+/**
  * Resolve a module specifier to a relative file path within the project.
  * Returns null if the module is external (e.g., npm package, stdlib).
  */
@@ -63,6 +130,7 @@ export function resolveImport(
   language: string,
   aliases?: PathAliases,
   jvmSuffixMap?: Map<string, string>,
+  csNamespaceMap?: Map<string, string[]>,
 ): string | null {
   // Skip obvious external/stdlib modules
   if (isExternalModule(moduleSpecifier, language)) return null;
@@ -235,7 +303,24 @@ export function resolveImport(
     }
 
     case "csharp": {
-      // Namespaces don't map cleanly to files, skip
+      // C# `using X.Y.Z;` resolves via a namespace lookup map built once
+      // at graph-build time. Project-internal namespaces map to one or
+      // more files (multi-file namespaces are common in real .NET
+      // projects). External namespaces (`System.*`, `Microsoft.*`, etc.)
+      // are filtered earlier by `isExternalModule`.
+      //
+      // When a namespace spans multiple files we return the first
+      // candidate as the resolved dependency. This produces meaningful
+      // edges instead of the previous always-null behaviour, which left
+      // C# file graphs empty and silently degraded the symbol-level
+      // tools' cross-file resolution. A multi-file fan-out improvement
+      // is tracked as a follow-up.
+      if (csNamespaceMap) {
+        const candidates = csNamespaceMap.get(moduleSpecifier);
+        if (candidates && candidates.length > 0) {
+          return candidates[0];
+        }
+      }
       return null;
     }
 

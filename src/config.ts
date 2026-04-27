@@ -108,6 +108,23 @@ export function contextCollectionName(projectId: string): string {
   return `context_${projectId}`;
 }
 
+// ── Symbol graph collections ─────────────────────────────────────────────
+
+/** Top-level metadata point for a project's symbol graph. */
+export function symgraphMetaCollectionName(projectId: string): string {
+  return `${projectId}_symgraph_meta`;
+}
+
+/** Per-file payloads for a project's symbol graph. */
+export function symgraphFileCollectionName(projectId: string): string {
+  return `${projectId}_symgraph_file`;
+}
+
+/** Sharded indices (name index + reverse-call file index). */
+export function symgraphIndexCollectionName(projectId: string): string {
+  return `${projectId}_symgraph_index`;
+}
+
 // ── Linked projects ──────────────────────────────────────────────────────
 
 /** Configuration file name for linked projects */

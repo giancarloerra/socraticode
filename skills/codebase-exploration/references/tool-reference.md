@@ -15,7 +15,7 @@ Semantic search across an indexed codebase. Only use after `codebase_index` is c
 
 **Returns:** Ranked code chunks with file paths, line numbers, language, and RRF scores.
 
-**Key behaviors:**
+**Key behaviours:**
 - Uses hybrid semantic + keyword (BM25) search with Reciprocal Rank Fusion
 - Warns if indexing is in progress (results will be incomplete during full index)
 - Warns if file watcher is not active (results may be stale)
@@ -41,7 +41,7 @@ Check index status: chunk count, indexing progress, last completed operation, fi
 - Code graph status (files, edges, last built, cached in memory)
 - Context artifacts status
 
-**Key behaviors:**
+**Key behaviours:**
 - Call every ~60 seconds during indexing to poll progress AND keep the MCP connection alive
 - Detects both same-process and cross-process indexing
 
@@ -58,7 +58,7 @@ Query the dependency graph for a specific file.
 
 **Returns:** Two lists: what this file imports (→) and what depends on it (←).
 
-**Key behaviors:**
+**Key behaviours:**
 - Requires graph to exist (auto-built after indexing, or use `codebase_graph_build`)
 - Auto-starts file watcher on query
 - Use relative paths (not absolute)
@@ -87,7 +87,7 @@ Find circular dependencies in the codebase.
 
 **Returns:** List of circular dependency chains (up to 20, with total count).
 
-**Key behaviors:**
+**Key behaviours:**
 - Detects transitive circular dependencies
 - Useful for debugging subtle runtime issues caused by import cycles
 
@@ -95,17 +95,27 @@ Find circular dependencies in the codebase.
 
 ## codebase_graph_visualize
 
-Generate a Mermaid diagram of the dependency graph.
+Visualise the dependency graph. Two modes:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `projectPath` | string | no | cwd | Absolute path to the project directory |
+| `mode` | `"mermaid" \| "interactive"` | no | `"mermaid"` | Output format |
+| `open` | boolean | no | `true` | In interactive mode, auto-open the browser |
 
-**Returns:** Mermaid flowchart code block. Nodes color-coded by language, circular dependency edges highlighted in red.
+**mode="mermaid"** (default) — returns a Mermaid flowchart code block. Nodes colour-coded by language, circular dependency edges highlighted in red. Renders inline in markdown viewers, VS Code, GitHub.
 
-**Key behaviors:**
-- Can be rendered in markdown viewers, VS Code, GitHub, etc.
-- Shows file count and edge count
+**mode="interactive"** — generates a self-contained HTML page (vendored Cytoscape.js + Dagre, works offline) written to the OS temp dir and opened in the user's default browser.
+- File view and (when available) Symbol view toggle
+- Click a node → sidebar with imports / dependents / symbols / line numbers
+- Right-click → blast radius overlay (reverse-transitive closure)
+- Live search, six layouts, PNG export
+- Shareable file — commit to a PR or attach to chat
+
+**Key behaviours:**
+- Interactive mode always includes the file view; the symbol view toggle is available when the symbol graph fits under embed caps (≤ 20k symbols / ≤ 60k call edges). Above that cap, the HTML still works — use `codebase_impact` / `codebase_symbols` for symbol-level queries.
+- Browser auto-open is best-effort. If it fails (headless environments, blocked browsers) the tool output still includes the file path.
+- Choose this mode when the user asks for a visual, interactive, or shareable graph.
 
 ---
 
@@ -119,7 +129,7 @@ Check graph build status and progress.
 
 **Returns:** If building: phase, file progress, elapsed time. If ready: node/edge counts, last built timestamp, cache status, last build duration.
 
-**Key behaviors:**
+**Key behaviours:**
 - Use to poll progress after `codebase_graph_build`
 - Shows build errors if last build failed
 
@@ -151,7 +161,7 @@ Semantic search across context artifacts.
 
 **Returns:** Artifact content chunks with artifact name, file path, line ranges, and scores.
 
-**Key behaviors:**
+**Key behaviours:**
 - Auto-indexes artifacts on first use (no manual step needed)
 - Auto-detects stale artifacts and re-indexes changed ones
 - Works with any text-based artifact: SQL, OpenAPI, Terraform, K8s, YAML, markdown, etc.
@@ -181,7 +191,7 @@ Display information about SocratiCode and all its tools.
 ### Graph tips
 - The graph is auto-built after `codebase_index` — usually no need to call `codebase_graph_build` manually
 - `codebase_graph_visualize` generates Mermaid that renders in GitHub, VS Code, and most markdown viewers
-- Check `codebase_graph_circular` when debugging mysterious behavior — circular deps cause subtle issues
+- Check `codebase_graph_circular` when debugging mysterious behaviour — circular deps cause subtle issues
 
 ### Context artifact tips
 - `codebase_context_search` auto-indexes on first use — just search, no setup needed

@@ -1,0 +1,119 @@
+/* SocratiCode interactive graph viewer — styles */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; width: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1f2937; overflow: hidden; }
+body { display: flex; flex-direction: column; }
+
+/* ── top bar ─────────────────────────────────────────────────────── */
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: #0f172a; color: #e2e8f0;
+  border-bottom: 1px solid #1e293b; flex-shrink: 0;
+}
+header h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+header h1 .proj { color: #fbbf24; }
+header .stats { font-size: 12px; color: #94a3b8; margin-left: 4px; }
+header .sep { width: 1px; height: 18px; background: #334155; }
+header .spacer { flex: 1; }
+
+.toolbar { display: flex; gap: 6px; align-items: center; }
+.toolbar label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.toolbar select, .toolbar input, .toolbar button {
+  background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+  padding: 5px 10px; border-radius: 4px; font-size: 12px; font-family: inherit;
+  outline: none;
+}
+.toolbar select:hover, .toolbar button:hover { background: #334155; cursor: pointer; }
+.toolbar select:focus, .toolbar input:focus { border-color: #60a5fa; }
+.toolbar input { width: 200px; }
+.toolbar button.primary { background: #2563eb; border-color: #2563eb; }
+.toolbar button.primary:hover { background: #1d4ed8; }
+.toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.view-toggle { display: inline-flex; border: 1px solid #334155; border-radius: 4px; overflow: hidden; }
+.view-toggle button { border: none; border-radius: 0; padding: 5px 10px; }
+.view-toggle button.active { background: #2563eb; color: #fff; }
+
+/* ── main area ───────────────────────────────────────────────────── */
+main { flex: 1; display: flex; min-height: 0; position: relative; }
+#cy { flex: 1; background: #f8fafc; min-width: 0; }
+
+#sidebar {
+  width: 340px; background: #fff; border-left: 1px solid #e5e7eb;
+  padding: 16px; overflow-y: auto; flex-shrink: 0;
+  font-size: 13px; line-height: 1.5;
+}
+#sidebar.empty { color: #94a3b8; font-style: italic; text-align: center; padding-top: 80px; }
+#sidebar h2 { font-size: 14px; font-weight: 600; margin-bottom: 4px; word-break: break-all; }
+#sidebar .kind-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 500; margin-bottom: 8px;
+  background: #e0e7ff; color: #3730a3;
+}
+#sidebar .lang-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 500; margin-bottom: 8px; color: #fff;
+}
+#sidebar .meta { color: #6b7280; font-size: 12px; margin-bottom: 12px; }
+#sidebar .meta strong { color: #1f2937; }
+#sidebar .section { margin-top: 14px; }
+#sidebar .section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 6px; }
+#sidebar ul { list-style: none; }
+#sidebar li { padding: 4px 8px; border-radius: 3px; cursor: pointer; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; color: #334155; }
+#sidebar li:hover { background: #f1f5f9; color: #0f172a; }
+#sidebar .actions { margin-top: 14px; display: flex; gap: 6px; flex-wrap: wrap; }
+#sidebar .actions button {
+  background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;
+  padding: 5px 10px; border-radius: 4px; font-size: 12px; font-family: inherit; cursor: pointer;
+}
+#sidebar .actions button:hover { background: #fecaca; }
+#sidebar .actions button.flow { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+#sidebar .actions button.flow:hover { background: #bfdbfe; }
+#sidebar .actions button.reset { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
+#sidebar .actions button.reset:hover { background: #e5e7eb; }
+#sidebar .actions button.truncated-note { background: transparent; border: none; color: #9ca3af; font-size: 11px; cursor: default; padding: 5px 0; }
+
+/* ── Symbol list (shown in sidebar when Symbol view has no seed) ──── */
+#sidebar.list h2 { margin-bottom: 2px; }
+#sidebar .list-count { color: #6b7280; font-size: 12px; margin-bottom: 12px; }
+#sidebar li .file-suffix { color: #94a3b8; font-size: 11px; margin-left: 6px; }
+
+/* ── Back button (sidebar, Symbol view with seed) ─────────────────── */
+.back-btn {
+  background: none; border: none; padding: 2px 0 8px;
+  color: #2563eb; font-size: 12px; font-family: inherit;
+  cursor: pointer; text-align: left; width: 100%;
+}
+.back-btn:hover { color: #1d4ed8; text-decoration: underline; }
+
+/* ── Symbol-view empty state overlay ────────────────────────────── */
+/* Constrained to the canvas area only (left of the sidebar) so the
+ * alphabetical symbol list stays visible on the right. `right: 340px`
+ * matches the sidebar width — keep in sync. */
+.empty-view {
+  position: absolute; top: 0; bottom: 0; left: 0; right: 340px;
+  background: #f8fafc;
+  display: none; align-items: center; justify-content: center;
+  z-index: 5; pointer-events: none;
+}
+.empty-view > div { max-width: 480px; text-align: center; padding: 32px; pointer-events: auto; }
+.empty-view h2 { font-size: 22px; font-weight: 600; color: #0f172a; margin-bottom: 14px; }
+.empty-view p { font-size: 14px; color: #475569; line-height: 1.6; margin-bottom: 10px; }
+.empty-view p.hint { font-size: 12px; color: #94a3b8; margin-top: 14px; padding-top: 14px; border-top: 1px solid #e2e8f0; }
+
+/* ── banner (symbol-mode not available) ─────────────────────────── */
+#banner {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+  padding: 8px 14px; border-radius: 6px; font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08); z-index: 10;
+  display: none;
+}
+#banner.visible { display: block; }
+
+/* ── hover tooltip ──────────────────────────────────────────────── */
+#tooltip {
+  position: absolute; background: #1f2937; color: #f9fafb;
+  padding: 6px 10px; border-radius: 4px; font-size: 12px;
+  pointer-events: none; opacity: 0; transition: opacity 0.1s;
+  max-width: 300px; word-break: break-all; z-index: 20;
+}

@@ -37,7 +37,7 @@ async function withRetry<T>(
 
 let client: QdrantClient | null = null;
 
-function getClient(): QdrantClient {
+export function getClient(): QdrantClient {
   if (!client) {
     client = new QdrantClient(
       QDRANT_URL

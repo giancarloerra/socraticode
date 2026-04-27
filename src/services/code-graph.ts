@@ -7,13 +7,35 @@ import path from "node:path";
 import { Lang, registerDynamicLanguage } from "@ast-grep/napi";
 import { graphCollectionName, projectIdFromPath } from "../config.js";
 import { EXTRA_EXTENSIONS, getLanguageFromExtension, MAX_GRAPH_FILE_BYTES } from "../constants.js";
-import type { CodeGraph, CodeGraphEdge, CodeGraphNode } from "../types.js";
+import type {
+  CodeGraph, CodeGraphEdge, CodeGraphNode,
+  SymbolEdge, SymbolGraphFilePayload, SymbolGraphMeta, SymbolNode, SymbolRef,
+} from "../types.js";
 import { loadPathAliases } from "./graph-aliases.js";
 import { extractImports } from "./graph-imports.js";
 import { buildJvmSuffixMap, resolveImport } from "./graph-resolution.js";
+import { computeUnresolvedPct, resolveCallSites } from "./graph-symbol-resolution.js";
+import { extractSymbolsAndCalls, rawCallsToUnresolvedEdges } from "./graph-symbols.js";
 import { createIgnoreFilter, shouldIgnore } from "./ignore.js";
 import { logger } from "./logger.js";
 import { deleteGraphData, getGraphMetadata, loadGraphData, saveGraphData } from "./qdrant.js";
+import {
+  dropSymbolGraphCache,
+  SymbolGraphCache,
+  setSymbolGraphCache,
+} from "./symbol-graph-cache.js";
+import {
+  allNameShardKeys,
+  contentHashOf,
+  deleteSymbolGraphData,
+  ensureSymbolGraphCollections,
+  nameShardKey,
+  reverseShardKey,
+  saveFilePayloads,
+  saveNameShard,
+  saveReverseShard,
+  saveSymbolGraphMeta,
+} from "./symbol-graph-store.js";
 
 // Re-export analysis functions for external consumers
 export { findCircularDependencies, generateMermaidDiagram, getFileDependencies, getGraphStats } from "./graph-analysis.js";
@@ -102,19 +124,40 @@ export async function getOrBuildGraph(
   }
 
   const graph = await buildCodeGraph(resolved, extraExtensions);
-  graphCache.set(resolved, graph);
-  return graph;
+  // Strip symbol fields when serving as a plain CodeGraph
+  const plain: CodeGraph = { nodes: graph.nodes, edges: graph.edges };
+  graphCache.set(resolved, plain);
+  return plain;
+}
+
+/** Options for `rebuildGraph` controlling which layers are rebuilt. */
+export interface RebuildGraphOptions {
+  /** Extra file extensions to treat as graph nodes. */
+  extraExtensions?: Set<string>;
+  /**
+   * When `true`, skip the symbol-graph extraction + persistence step entirely.
+   * The file-import graph is still rebuilt and persisted. The caller is then
+   * expected to update the symbol graph incrementally via
+   * `updateChangedFilesSymbolGraph` from `symbol-graph-incremental.ts`.
+   * Default: `false`.
+   */
+  skipSymbolGraph?: boolean;
 }
 
 /** Force-rebuild, cache, and persist a graph.
  * If a build is already in progress for this project, returns the existing
  * in-flight promise (deduplication — same as indexer concurrency guard).
+ *
+ * Backward-compatible: accepts either `extraExtensions` (legacy positional
+ * Set) or a `RebuildGraphOptions` object.
  */
 export async function rebuildGraph(
   projectPath: string,
-  extraExtensions?: Set<string>,
+  optsOrExtras?: Set<string> | RebuildGraphOptions,
 ): Promise<CodeGraph> {
   const resolved = path.resolve(projectPath);
+  const opts: RebuildGraphOptions =
+    optsOrExtras instanceof Set ? { extraExtensions: optsOrExtras } : (optsOrExtras ?? {});
 
   // Concurrency guard: if already building, return the existing promise
   const existing = graphBuildPromises.get(resolved);
@@ -124,7 +167,7 @@ export async function rebuildGraph(
   }
 
   // Start tracked build
-  const promise = doRebuildGraph(resolved, extraExtensions);
+  const promise = doRebuildGraph(resolved, opts);
   graphBuildPromises.set(resolved, promise);
 
   try {
@@ -138,7 +181,7 @@ export async function rebuildGraph(
 /** Internal: performs the actual graph rebuild with progress tracking */
 async function doRebuildGraph(
   resolvedPath: string,
-  extraExtensions?: Set<string>,
+  opts: RebuildGraphOptions,
 ): Promise<CodeGraph> {
   const progress: GraphBuildProgress = {
     startedAt: Date.now(),
@@ -150,14 +193,32 @@ async function doRebuildGraph(
 
   try {
     graphCache.delete(resolvedPath);
-    const graph = await buildCodeGraph(resolvedPath, extraExtensions, progress);
+    const built = await buildCodeGraph(resolvedPath, opts.extraExtensions, progress);
+    const graph: CodeGraph = { nodes: built.nodes, edges: built.edges };
     graphCache.set(resolvedPath, graph);
 
-    // Persist to Qdrant
+    // Persist file-import graph to Qdrant
     progress.phase = "persisting";
     const projectId = projectIdFromPath(resolvedPath);
     const graphCollName = graphCollectionName(projectId);
     await saveGraphData(graphCollName, resolvedPath, graph);
+
+    // Build & persist symbol graph (resolution + sharded persistence) — unless
+    // the caller asked to skip it (Phase F watcher path).
+    if (!opts.skipSymbolGraph) {
+      try {
+        progress.phase = "resolving symbols";
+        resolveCallSites(graph, built.symbolsByFile, built.outgoingCallsByFile);
+
+        progress.phase = "persisting symbols";
+        await persistSymbolGraph(projectId, resolvedPath, built.symbolsByFile, built.outgoingCallsByFile);
+      } catch (err) {
+        logger.warn("Symbol graph build failed (file-import graph saved)", {
+          projectPath: resolvedPath,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     lastGraphBuildCompleted.set(resolvedPath, {
       completedAt: Date.now(),
@@ -185,6 +246,115 @@ async function doRebuildGraph(
   }
 }
 
+/** Persist the symbol graph: per-file payloads + sharded indices + meta. */
+async function persistSymbolGraph(
+  projectId: string,
+  resolvedPath: string,
+  symbolsByFile: Map<string, SymbolNode[]>,
+  outgoingCallsByFile: Map<string, SymbolEdge[]>,
+): Promise<void> {
+  await ensureSymbolGraphCollections(projectId);
+
+  // Build per-file payloads (need source bytes for contentHash).
+  const payloads: SymbolGraphFilePayload[] = [];
+  let totalSymbols = 0;
+  let totalEdges = 0;
+  for (const [relPath, symbols] of symbolsByFile.entries()) {
+    const outgoingCalls = outgoingCallsByFile.get(relPath) ?? [];
+    let language = "plaintext";
+    const firstNonModule = symbols.find((s) => s.name !== "<module>");
+    if (firstNonModule) language = firstNonModule.language;
+    else language = symbols[0]?.language ?? language;
+
+    let contentHash = "";
+    try {
+      const src = await fs.readFile(path.join(resolvedPath, relPath), "utf-8");
+      contentHash = contentHashOf(src);
+    } catch {
+      // ignore
+    }
+    payloads.push({
+      file: relPath, language, contentHash, symbols, outgoingCalls,
+    });
+    totalSymbols += symbols.filter((s) => s.name !== "<module>").length;
+    totalEdges += outgoingCalls.length;
+  }
+
+  // Build sharded indices
+  const nameShards = new Map<string, Record<string, SymbolRef[]>>();
+  for (const key of allNameShardKeys()) nameShards.set(key, {});
+  for (const [file, symbols] of symbolsByFile.entries()) {
+    for (const sym of symbols) {
+      if (sym.name === "<module>") continue;
+      const shardKey = nameShardKey(sym.name);
+      const shard = nameShards.get(shardKey);
+      if (!shard) continue;
+      const ref: SymbolRef = { file, id: sym.id };
+      // Use hasOwn — `shard[sym.name]` would return Object.prototype.constructor
+      // (a function) for symbol names like "constructor" / "toString" / "hasOwnProperty".
+      const existing = Object.hasOwn(shard, sym.name) ? shard[sym.name] : undefined;
+      if (existing) existing.push(ref);
+      else shard[sym.name] = [ref];
+    }
+  }
+
+  const reverseShards = new Map<number, Record<string, string[]>>();
+  for (const [callerFile, edges] of outgoingCallsByFile.entries()) {
+    for (const e of edges) {
+      for (const calleeId of e.calleeCandidates) {
+        const calleeFile = calleeId.split("::")[0];
+        if (!calleeFile || calleeFile === callerFile) continue;
+        const bucket = reverseShardKey(calleeFile);
+        let shard = reverseShards.get(bucket);
+        if (!shard) {
+          shard = {};
+          reverseShards.set(bucket, shard);
+        }
+        const existing = shard[calleeFile];
+        if (existing) {
+          if (!existing.includes(callerFile)) existing.push(callerFile);
+        } else {
+          shard[calleeFile] = [callerFile];
+        }
+      }
+    }
+  }
+
+  // Persist
+  await saveFilePayloads(projectId, payloads);
+  for (const [shardKey, shard] of nameShards.entries()) {
+    if (Object.keys(shard).length === 0) continue;
+    await saveNameShard(projectId, shardKey, shard);
+  }
+  for (const [bucket, shard] of reverseShards.entries()) {
+    if (Object.keys(shard).length === 0) continue;
+    await saveReverseShard(projectId, bucket, shard);
+  }
+
+  const meta: SymbolGraphMeta = {
+    projectId,
+    symbolCount: totalSymbols,
+    edgeCount: totalEdges,
+    fileCount: symbolsByFile.size,
+    unresolvedEdgePct: computeUnresolvedPct(outgoingCallsByFile),
+    builtAt: Date.now(),
+    schemaVersion: 1,
+  };
+  await saveSymbolGraphMeta(projectId, meta);
+
+  // Replace cache entry
+  const cache = new SymbolGraphCache(projectId, meta);
+  setSymbolGraphCache(cache);
+
+  logger.info("Symbol graph persisted", {
+    projectId,
+    files: meta.fileCount,
+    symbols: meta.symbolCount,
+    edges: meta.edgeCount,
+    unresolvedPct: meta.unresolvedEdgePct.toFixed(1),
+  });
+}
+
 /**
  * Wait for any in-flight graph build to finish for a project.
  * Resolves immediately if no build is in progress.
@@ -205,6 +375,8 @@ export async function removeGraph(projectPath: string): Promise<void> {
   const projectId = projectIdFromPath(resolved);
   const graphCollName = graphCollectionName(projectId);
   await deleteGraphData(graphCollName);
+  await deleteSymbolGraphData(projectId);
+  dropSymbolGraphCache(projectId);
   logger.info("Removed code graph", { projectPath: resolved });
 }
 
@@ -224,17 +396,49 @@ export async function getGraphStatus(projectPath: string): Promise<{
   nodeCount: number;
   edgeCount: number;
   cached: boolean;
+  symbol?: {
+    fileCount: number;
+    symbolCount: number;
+    edgeCount: number;
+    unresolvedEdgePct: number;
+    builtAt: number;
+  };
 } | null> {
   const resolved = path.resolve(projectPath);
   const projectId = projectIdFromPath(resolved);
   const graphCollName = graphCollectionName(projectId);
   const meta = await getGraphMetadata(graphCollName);
   if (!meta) return null;
+
+  // Best-effort symbol-graph stats
+  let symbol: {
+    fileCount: number;
+    symbolCount: number;
+    edgeCount: number;
+    unresolvedEdgePct: number;
+    builtAt: number;
+  } | undefined;
+  try {
+    const { loadSymbolGraphMeta } = await import("./symbol-graph-store.js");
+    const sm = await loadSymbolGraphMeta(projectId);
+    if (sm) {
+      symbol = {
+        fileCount: sm.fileCount,
+        symbolCount: sm.symbolCount,
+        edgeCount: sm.edgeCount,
+        unresolvedEdgePct: sm.unresolvedEdgePct,
+        builtAt: sm.builtAt,
+      };
+    }
+  } catch {
+    // symbol graph optional
+  }
   return {
     lastBuiltAt: meta.lastBuiltAt,
     nodeCount: meta.nodeCount,
     edgeCount: meta.edgeCount,
     cached: graphCache.has(resolved),
+    symbol,
   };
 }
 
@@ -367,12 +571,18 @@ async function getGraphableFiles(
  * Build a code graph for a project using ast-grep for polyglot support.
  * Files with extra extensions (no AST grammar) are included as leaf nodes
  * that can be targets of import edges from other files.
+ *
+ * Also extracts symbols and call sites in the same pass — returned via
+ * `symbolsByFile` / `outgoingCallsByFile` and persisted by `doRebuildGraph`.
  */
 export async function buildCodeGraph(
   projectPath: string,
   extraExtensions?: Set<string>,
   progress?: GraphBuildProgress,
-): Promise<CodeGraph> {
+): Promise<CodeGraph & {
+  symbolsByFile: Map<string, SymbolNode[]>;
+  outgoingCallsByFile: Map<string, SymbolEdge[]>;
+}> {
   ensureDynamicLanguages();
 
   const resolvedPath = path.resolve(projectPath);
@@ -389,6 +599,8 @@ export async function buildCodeGraph(
 
   const nodesMap = new Map<string, CodeGraphNode>();
   const edges: CodeGraphEdge[] = [];
+  const symbolsByFile = new Map<string, SymbolNode[]>();
+  const outgoingCallsByFile = new Map<string, SymbolEdge[]>();
 
   // Build a suffix lookup map for JVM multi-module projects (Java/Kotlin/Scala).
   // This resolves FQNs like com.example.Foo when the class lives under a nested
@@ -452,6 +664,18 @@ export async function buildCodeGraph(
     // Extract imports using ast-grep
     const importInfos = extractImports(source, lang, ext);
 
+    // Extract symbols & raw call sites in the same pass
+    try {
+      const extracted = extractSymbolsAndCalls(source, lang, ext, relPath);
+      symbolsByFile.set(relPath, extracted.symbols);
+      outgoingCallsByFile.set(relPath, rawCallsToUnresolvedEdges(extracted.rawCalls));
+    } catch (err) {
+      logger.debug("Symbol extraction failed (continuing)", {
+        file: relPath,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     for (const imp of importInfos) {
       node.imports.push(imp.moduleSpecifier);
 
@@ -491,5 +715,7 @@ export async function buildCodeGraph(
   return {
     nodes: Array.from(nodesMap.values()),
     edges,
+    symbolsByFile,
+    outgoingCallsByFile,
   };
 }

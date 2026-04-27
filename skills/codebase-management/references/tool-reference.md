@@ -11,7 +11,7 @@ Start indexing a codebase in the background. Returns immediately.
 
 **Returns:** Confirmation that indexing started, with instructions to poll `codebase_status`.
 
-**Key behaviors:**
+**Key behaviours:**
 - Runs asynchronously — does NOT block. Returns immediately.
 - Auto-starts file watcher upon completion (if not cancelled)
 - Ensures Docker/Qdrant/Ollama infrastructure is running first
@@ -33,7 +33,7 @@ Incrementally update an existing index. Only re-indexes changed files.
 
 **Returns:** Statistics: files added/updated/removed, chunks created.
 
-**Key behaviors:**
+**Key behaviours:**
 - Runs synchronously (blocking), unlike `codebase_index`
 - Only processes files changed since last index (via content hash comparison)
 - Auto-starts file watcher if not already active
@@ -51,7 +51,7 @@ Remove a project's entire index from the vector database.
 
 **Returns:** Confirmation of removal.
 
-**Key behaviors:**
+**Key behaviours:**
 - **Destructive** — cannot be undone
 - Safely stops file watcher (same-process and cross-process)
 - Cancels in-progress indexing and drains current batch
@@ -70,7 +70,7 @@ Gracefully stop an in-progress indexing operation.
 
 **Returns:** Confirmation with current phase and batch info.
 
-**Key behaviors:**
+**Key behaviours:**
 - Current batch finishes and checkpoints — all progress preserved
 - Re-run `codebase_index` to resume from where it left off
 - Handles both same-process and cross-process (orphan) indexing
@@ -90,7 +90,7 @@ Start/stop/status of live file watching.
 
 **Returns:** Action result or list of watched projects.
 
-**Key behaviors:**
+**Key behaviours:**
 - `start`: Runs catch-up incremental update first, then starts debounced file watcher
 - `stop`: Stops same-process watcher (cross-process watchers unaffected)
 - `status`: Lists all watched projects including cross-process watchers
@@ -111,7 +111,7 @@ Build the dependency graph using AST-based static analysis.
 
 **Returns:** Confirmation that build started. Poll with `codebase_graph_status`.
 
-**Key behaviors:**
+**Key behaviours:**
 - Runs asynchronously in background
 - Auto-built during `codebase_index` (usually no need to call manually)
 - Concurrency guard: if already building, shows progress
@@ -130,7 +130,7 @@ Remove a project's persisted code graph.
 
 **Returns:** Confirmation of removal.
 
-**Key behaviors:**
+**Key behaviours:**
 - **Destructive** — cannot be undone
 - Waits for in-flight builds before deletion
 - Graph auto-rebuilds during next `codebase_index`
@@ -159,7 +159,7 @@ Index or re-index all context artifacts.
 
 **Returns:** Summary: artifacts indexed with chunk counts, any errors.
 
-**Key behaviors:**
+**Key behaviours:**
 - Runs synchronously (blocking)
 - Usually auto-triggered by `codebase_context_search` on first use
 - Reports individual artifact errors without stopping the whole operation
@@ -176,7 +176,7 @@ Remove all indexed context artifacts.
 
 **Returns:** Confirmation of removal.
 
-**Key behaviors:**
+**Key behaviours:**
 - **Destructive** — cannot be undone
 - Blocked while indexing is in progress (wait for finish or use `codebase_stop`)
 - Removes ALL artifacts (not selective)
@@ -193,7 +193,7 @@ Check infrastructure health: Docker, Qdrant, Ollama, embedding model.
 
 **Returns:** Status for each component with [OK]/[MISSING] indicators.
 
-**Key behaviors:**
+**Key behaviours:**
 - Checks Docker availability
 - Checks Qdrant (managed container or external endpoint)
 - Checks embedding provider health (Ollama, OpenAI, or Google)

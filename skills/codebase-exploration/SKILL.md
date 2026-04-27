@@ -3,10 +3,10 @@ name: codebase-exploration
 description: >-
   Explore and understand codebases using SocratiCode semantic search, dependency graphs,
   and context artifacts. Use when exploring code, understanding architecture, finding
-  functions/types, analyzing dependencies, searching database schemas or API specs,
+  functions/types, analysing dependencies, searching database schemas or API specs,
   or when socraticode/codebase_search tools are available. Activates when the user asks
   about code structure, wants to find where a feature lives, or needs to understand
-  how code is organized.
+  how code is organised.
 ---
 
 # SocratiCode Codebase Exploration
@@ -35,8 +35,8 @@ Use `codebase_graph_query` to see what a file imports and what depends on it **b
 
 - **`codebase_graph_query`** — imports and dependents for any file (pass relative path)
 - **`codebase_graph_stats`** — architecture overview: total files, edges, most connected files, orphans, language breakdown
-- **`codebase_graph_circular`** — find circular dependencies (these cause subtle runtime bugs; check proactively when debugging unexpected behavior)
-- **`codebase_graph_visualize`** — Mermaid diagram color-coded by language, circular deps highlighted in red
+- **`codebase_graph_circular`** — find circular dependencies (these cause subtle runtime bugs; check proactively when debugging unexpected behaviour)
+- **`codebase_graph_visualize`** — Mermaid diagram colour-coded by language, circular deps highlighted in red. Pass `mode: "interactive"` to open a self-contained HTML explorer (file + symbol views, blast-radius overlay, search, PNG export — works offline) instead.
 
 The graph is auto-built after indexing. Use `codebase_graph_status` to check if the graph is ready.
 
@@ -76,7 +76,8 @@ Run `codebase_context` early to see what's available. Use `codebase_context_sear
 | See what a file imports or what depends on it | `codebase_graph_query` |
 | Get architecture overview (files, edges, most connected) | `codebase_graph_stats` |
 | Spot circular dependencies | `codebase_graph_circular` |
-| Visualize module structure | `codebase_graph_visualize` |
+| Visualise module structure (text / Mermaid) | `codebase_graph_visualize` |
+| User asks for a visual / interactive / shareable graph | `codebase_graph_visualize mode="interactive"` |
 | Check graph build status | `codebase_graph_status` |
 | Verify index is up to date | `codebase_status` |
 | Discover available schemas, specs, configs | `codebase_context` |

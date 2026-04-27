@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{TITLE}}</title>
+<style>{{STYLES}}</style>
+</head>
+<body>
+<header>
+  <h1>SocratiCode <span class="proj">{{PROJECT_NAME}}</span> <span class="stats">{{STATS}}</span></h1>
+  <div class="sep"></div>
+  <div class="toolbar view-toggle" title="Switch between file-level and symbol-level graph">
+    <button data-view="files" class="active">Files</button>
+    <button data-view="symbols">Symbols</button>
+  </div>
+  <div class="sep"></div>
+  <div class="toolbar">
+    <label for="layout">Layout</label>
+    <select id="layout">
+      <option value="dagre">Hierarchical (Dagre) — recommended</option>
+      <option value="concentric">Concentric (by connections)</option>
+      <option value="breadthfirst">Breadth-first</option>
+      <option value="grid">Grid</option>
+      <option value="circle">Circle</option>
+    </select>
+  </div>
+  <div class="spacer"></div>
+  <div class="toolbar">
+    <input id="search" type="text" placeholder="Search files / symbols…" autocomplete="off">
+    <button id="fit" title="Fit the whole graph into view">Fit</button>
+    <button id="reset" title="Clear highlights and recenter">Reset</button>
+    <button id="export" class="primary" title="Export the current view as a PNG image">Export PNG</button>
+  </div>
+</header>
+<main>
+  <div id="cy"></div>
+  <!-- Empty-state overlay for Symbol view. Symbol view is a FOCUS graph
+       (SourceTrail-style): it starts empty and only ever shows one symbol's
+       call-graph neighbourhood. Search or a click in the File view's
+       sidebar seeds it; clicking a neighbour re-centres on it. -->
+  <div id="symbol-empty" class="empty-view">
+    <div>
+      <h2>Symbol view</h2>
+      <p data-msg>Pick a symbol from the list on the right, type a name in the search bar, or click a symbol in a file's sidebar (Files view).</p>
+      <p class="hint">The symbol view is a <strong>focus graph</strong> — it shows one symbol with its direct callers / callees (depth 2). Click any neighbour to re-centre on it.</p>
+    </div>
+  </div>
+  <aside id="sidebar" class="empty">Click a node to see details</aside>
+  <div id="banner"></div>
+  <div id="tooltip"></div>
+</main>
+<script>{{CYTOSCAPE}}</script>
+<script>{{DAGRE}}</script>
+<script>{{CYTOSCAPE_DAGRE}}</script>
+<script id="socraticode-data" type="application/json">{{DATA_JSON}}</script>
+<script>
+  // Parse the embedded JSON from a <script type="application/json"> — safest
+  // channel for arbitrary strings; no template interpolation into JS.
+  window.__SOCRATICODE_DATA__ = JSON.parse(document.getElementById("socraticode-data").textContent);
+</script>
+<script>{{APP}}</script>
+</body>
+</html>

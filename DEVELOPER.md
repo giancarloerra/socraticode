@@ -197,13 +197,19 @@ src/
 │   ├── graph-aliases.ts     # Path alias resolution from tsconfig/jsconfig compilerOptions.paths
 │   ├── graph-imports.ts     # Import/require/use extraction for 18+ languages via AST
 │   ├── graph-resolution.ts  # Module specifier → file path resolution (incl. aliases, SCSS partials)
+│   ├── graph-symbols.ts     # Per-language symbol & call-site extraction (Impact Analysis)
+│   ├── graph-symbol-resolution.ts  # Three-tier cross-file call-site resolution
+│   ├── graph-entrypoints.ts # Entry-point detection (orphans + main() + framework patterns + tests)
+│   ├── graph-impact.ts      # Impact / flow / context / list analysis primitives
+│   ├── symbol-graph-store.ts  # Sharded Qdrant storage layer for the symbol graph
+│   ├── symbol-graph-cache.ts  # Per-project LRU cache with lazy shard loading
 │   ├── startup.ts           # Startup lifecycle: auto-resume, graceful shutdown coordination
 │   └── context-artifacts.ts # Context artifact loading, chunking, indexing, search
 │
 ├── tools/
 │   ├── index-tools.ts       # Handlers: codebase_index, codebase_update, codebase_remove, codebase_stop, codebase_watch
 │   ├── query-tools.ts       # Handlers: codebase_search, codebase_status
-│   ├── graph-tools.ts       # Handlers: codebase_graph_build/query/stats/circular/visualize
+│   ├── graph-tools.ts       # Handlers: codebase_graph_*, codebase_impact, codebase_flow, codebase_symbol(s)
 │   ├── context-tools.ts     # Handlers: codebase_context, codebase_context_search/index/remove
 │   └── manage-tools.ts      # Handlers: codebase_health, codebase_list_projects, codebase_about
 
@@ -799,6 +805,115 @@ Watcher settings:
 | `ensureDynamicLanguages` | `() → void` | Register dynamic ast-grep language grammars |
 | `getAstGrepLang` | `(ext) → Lang \| string \| null` | Map file extension to ast-grep language |
 
+### Symbol-level call graph (Impact Analysis)
+
+A second graph layer sits on top of the file-import graph. It tracks individual functions
+and methods and the calls between them, enabling true blast-radius queries
+(`codebase_impact`), forward execution traces (`codebase_flow`), and per-symbol context
+(`codebase_symbol`).
+
+#### Pipeline
+
+```
+buildCodeGraph (one pass per file)
+   ├── extractImports          → file-import graph
+   └── extractSymbolsAndCalls  → SymbolNode[] + raw call sites per file
+                                       │
+                                       ▼
+                       resolveCallSites (3-tier strategy)
+                          1. local symbol match
+                          2. walk caller's dependencies[]
+                          3. one extra hop (barrel re-exports)
+                                       │
+                                       ▼
+                          persistSymbolGraph (sharded)
+                          ├── 1 file payload per source file
+                          ├── 27 name shards (first lowercased char)
+                          ├── 256 reverse-call file shards (SHA1 first byte)
+                          └── 1 meta point
+                                       │
+                                       ▼
+                       SymbolGraphCache (per project, lazy)
+                       — used by getImpactRadius / getCallFlow /
+                         getSymbolContext / listSymbols
+```
+
+#### Sharded storage layout (per project)
+
+| Collection | Points | Purpose |
+|------------|--------|---------|
+| `{projectId}_symgraph_meta`  | 1                | `SymbolGraphMeta` (counts, builtAt, schemaVersion, unresolved%) |
+| `{projectId}_symgraph_file`  | 1 per source file | `SymbolGraphFilePayload` — symbols + outgoing calls + contentHash |
+| `{projectId}_symgraph_index` | 27 + 256 ≈ 283   | Sharded indices: name shards (`a`..`z` + `_`) and reverse-call shards (0..255) |
+
+All points use the dummy-vector-`[0]` pattern (Qdrant requires a vector even when not used for similarity search). Points use UUID-formatted SHA-256 IDs via `uuidFromString`. The `on_disk_payload: true` flag keeps memory usage bounded.
+
+#### Languages with first-class symbol extraction
+
+TypeScript / JavaScript / TSX, Python, Go, Rust, Java, Kotlin, Scala, C#, C, C++, Ruby, PHP, Swift, Bash. Dart, Lua, Svelte, Vue and unknown languages fall through to a regex fallback that still produces a `<module>` symbol plus best-effort function/class detection.
+
+#### Confidence levels for resolved call edges
+
+- `local` — callee is defined in the same file
+- `unique` — exactly one cross-file candidate matched
+- `multiple-candidates` — name matched in more than one dependency; all candidates kept
+- `unresolved` — no symbol found anywhere reachable; left as a name-only edge
+
+`SymbolGraphMeta.unresolvedEdgePct` exposes how much of the call graph is fuzzy — useful as a quality signal.
+
+#### Accepted limits — what the call graph does not see
+
+The call graph is built from static analysis without type inference. These classes of call patterns are silently absent from the graph **by design**:
+
+- **Dynamic dispatch** — Python `getattr(obj, name)(...)`, JavaScript `obj[key](...)`, `eval`, language-level reflection. The callee is only known at runtime; the static extractor captures the literal call sites it can see and nothing more.
+- **Method resolution without receiver type** — `obj.foo()` resolves by the bare name `foo` against every dependency that exports a `foo`. Receiver type is informational in the output, never a pruning filter. Two unrelated classes with a `foo` method both appear as candidates on an ambiguous edge (`confidence: "multiple-candidates"`).
+- **Macros** — Rust (`println!`, custom `macro_rules!`) and C / C++ preprocessor macros are not expanded. Macro invocations are captured as calls to the macro *name*, not to whatever the expansion actually calls.
+- **Framework magic** — Dependency injection (Spring `@Autowired`, Angular DI, NestJS providers), ORM metaprogramming (Rails `has_many`, ActiveRecord callbacks), decorator-driven routing where the handler is never named at a call site (Django class-based view dispatch, some FastAPI patterns), and similar indirection goes through the framework rather than through a direct call. A method that is only called via `@Autowired` will show zero callers in `codebase_impact`.
+
+`SymbolGraphMeta.unresolvedEdgePct` is the quality signal for this class of limit: consistently high values (>20%) indicate either heavy framework magic in the codebase or a language where extractor coverage is incomplete. Users running `codebase_impact` on a service-oriented codebase with heavy DI should treat "zero callers" as a hint to double-check, not a guarantee.
+
+#### Per-file incremental updates (Phase F)
+
+`services/symbol-graph-incremental.ts` exports `updateChangedFilesSymbolGraph(projectId, projectPath, fileGraph, changedRelPaths, removedRelPaths)`. Given a freshly-rebuilt file-import graph and a small list of changed/removed paths, it:
+
+1. Re-extracts symbols + raw calls for each changed file.
+2. Resolves calls best-effort against the supplied file-import graph (cross-file edges may be left `unresolved` until the next full rebuild — acceptable for the watcher hot path).
+3. Diffs against the previously persisted file payload (using `contentHash`) and patches only the affected name shards (≤27) and reverse-call shards (≤256).
+4. Updates the `SymbolGraphMeta` counts incrementally (`builtAt` refreshed; `unresolvedEdgePct` is left as-is until the next full rebuild).
+5. Returns `fullRebuildRequired: true` if no meta exists — the caller is then expected to fall back to a full `rebuildGraph()`.
+
+**Wiring status**: fully wired. `rebuildGraph(projectPath, { skipSymbolGraph: true })` returns just the file-import graph; `services/indexer.ts` (the watcher / `codebase_update` entry point) calls Phase F when:
+
+1. A `SymbolGraphMeta` already exists for the project, **and**
+2. The change set is **≤ 50 files** (`INCREMENTAL_SYMBOL_THRESHOLD` in `services/indexer.ts`).
+
+Above the threshold — or on first index — it falls back to a full `rebuildGraph()` (no `skipSymbolGraph`). End-to-end coverage lives in `tests/integration/symbol-graph-incremental.test.ts` (5 cases including a regression for prototype-key collisions like a method named `constructor`) and in the watcher path itself via `tests/integration/symbol-graph-scale.test.ts`.
+
+#### Scale & smoke benchmarks
+
+Two complementary harnesses:
+
+- **`tests/unit/symbol-graph-scale.test.ts`** — CPU-only sharding/hashing micro-benchmarks at 10k–100k symbol volumes. Loose thresholds; catches order-of-magnitude regressions in pure-data structures.
+- **`tests/integration/symbol-graph-scale.test.ts`** — full end-to-end against a real Qdrant. Default load: 1000 synthetic Python files × 20 symbols/file = 20,000 symbols. Asserts (1) full rebuild within budget, (2) cold `listSymbols` / `getImpactRadius` queries return within budget, (3) Phase F single-file update is ≥ 4× faster than a full rebuild. Set `SCALE_LARGE=1` to push to 10k files / 200k symbols (manual perf runs only).
+
+##### Real-world benchmark numbers
+
+Captured with `npx tsx scripts/benchmark-graph.ts <path>` against a real Qdrant (Docker, default `qdrant/qdrant:v1.15.5`).
+
+| Date | Repo | Files | Symbols | Call edges | Full build | RSS |
+|------|------|------:|--------:|-----------:|-----------:|----:|
+| 2026-04-21 | `socraticode` (this repo, src + tests) | 82 | 571 | 9914 | 0.90 s | 167 MB |
+| 2026-04-21 | synthetic Python (1000 files / 20k symbols) | 1001 | 20000 | 999 | 6.55 s | ~250 MB |
+
+Phase F single-file update on the 1000-file synthetic repo: **197 ms** (≈33× faster than the 6.55 s full rebuild). Cold queries (`listSymbols("fn_500_5")`, `getImpactRadius("fn_500_0", depth=3)`): **~70 ms** each.
+
+To capture numbers on your own repo:
+
+```bash
+docker compose up -d qdrant   # if not already running
+npx tsx scripts/benchmark-graph.ts /absolute/path/to/repo
+```
+
 ### graph-analysis.ts
 
 | Function | Signature | Description |
@@ -948,7 +1063,7 @@ Parameters:
   projectPath?: string        — Absolute path (defaults to cwd)
   extraExtensions?: string    — Comma-separated extra extensions
 
-Behavior: Starts graph build in the background (fire-and-forget).
+Behaviour: Starts graph build in the background (fire-and-forget).
   If a build is already in progress, returns current progress instead.
   Uses concurrency guard — duplicate callers share the same build.
 
@@ -983,10 +1098,45 @@ Returns: List of circular dependency chains (up to 20 displayed)
 #### `codebase_graph_visualize`
 ```
 Parameters:
-  projectPath?: string  — Absolute path (defaults to cwd)
+  projectPath?: string       — Absolute path (defaults to cwd)
+  mode?: "mermaid" | "interactive" — Output mode (default "mermaid")
+  open?: boolean             — In interactive mode, auto-open the browser (default true)
 
-Returns: Mermaid diagram of the dependency graph, color-coded by language
+Returns:
+  - mode=mermaid     → Mermaid diagram (text), colour-coded by language
+  - mode=interactive → Self-contained HTML file path + auto-opened browser window
 ```
+
+The interactive mode generates a full-featured graph explorer backed by
+vendored Cytoscape.js + Dagre assets — no CDN, works offline. Architecture:
+
+  1. `services/graph-visualize-html.ts::buildInteractiveGraphHtml()` loads
+     the assets once (module-level cache), builds `VizData` from the file
+     graph plus — when a `SymbolGraphMeta` exists and the totals fit under
+     the caps (`MAX_SYMBOLS=20000`, `MAX_EDGES=60000`) — the symbol graph
+     via parallel `loadFilePayload()` batches. Per-file symbol lists are
+     embedded unconditionally (capped at `MAX_SYMS_PER_FILE=200` per file).
+  2. Assets are spliced into `viewer-template.html` (CSS, Cytoscape,
+     Dagre, cytoscape-dagre plugin, `viewer-app.js`, and graph data as
+     JSON inside `<script type="application/json">`). Every `<` in the
+     JSON is escaped to `\u003c` so a stray `</script>` in a symbol name
+     cannot break out.
+  3. `services/graph-visualize-browser.ts::writeInteractiveGraphFile()`
+     writes to `os.tmpdir()/socraticode-graph/${projectId}.html` —
+     deterministic path per project, overwritten on each call.
+  4. `openInBrowser()` uses the `open` npm package (no new transitive
+     deps; wraps `open` on macOS, `xdg-open` on Linux, `start` on
+     Windows). Failure is soft — the tool output still includes the file
+     path so the user can open it manually.
+  5. The viewer (`viewer-app.js`) uses `document.createElement` +
+     `textContent` exclusively (no `innerHTML`) so data fields with
+     HTML-looking content are neutral.
+
+When the symbol graph overflows the caps, the HTML still renders the
+file view; the Symbols toggle is shown but explicitly disabled with a
+banner directing the user to `codebase_impact` / `codebase_symbols` for
+symbol-level queries. Per-file symbol lists in the sidebar remain
+available regardless of total graph size.
 
 #### `codebase_graph_remove`
 ```
@@ -1275,7 +1425,7 @@ Make sure the project has been indexed first (`codebase_index`). Check the statu
 
 ### Code graph returns empty
 
-The code graph uses ast-grep for AST-based import extraction. It works for 18+ languages. If a file has no recognized imports (or uses non-standard import patterns), it may appear as an orphan node.
+The code graph uses ast-grep for AST-based import extraction. It works for 18+ languages. If a file has no recognised imports (or uses non-standard import patterns), it may appear as an orphan node.
 
 ### Large codebase is slow to index
 

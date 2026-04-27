@@ -214,7 +214,7 @@ export async function handleManageTool(
         "  codebase_graph_query  — Imports & dependents for a file.",
         "  codebase_graph_stats  — Graph stats: files, edges, most connected, orphans.",
         "  codebase_graph_circular — Find circular dependencies.",
-        "  codebase_graph_visualize — Mermaid diagram, color-coded by language.",
+        "  codebase_graph_visualize — Mermaid diagram (default) or interactive HTML explorer (mode=\"interactive\"), colour-coded by language.",
         "  codebase_graph_status — Poll graph build progress.",
         "  codebase_graph_remove — Delete a project's graph.",
         "",

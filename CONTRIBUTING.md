@@ -51,7 +51,7 @@ See the [Developer Guide](DEVELOPER.md) for architecture details, data flows, an
 Use the [Bug Report](https://github.com/giancarloerra/socraticode/issues/new?template=bug_report.yml) issue template. Include:
 
 - Steps to reproduce
-- Expected vs actual behavior
+- Expected vs actual behaviour
 - Your environment (OS, Node.js version, embedding provider, MCP host)
 - Log output if available (set `SOCRATICODE_LOG_LEVEL=debug`)
 

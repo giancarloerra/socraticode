@@ -101,6 +101,44 @@ export const MAX_AVG_LINE_LENGTH = 500;
  */
 export const MAX_CHUNK_CHARS = 2000;
 
+// ── Symbol-level call graph (Impact Analysis) ────────────────────────────
+
+/** Maximum BFS depth for `codebase_impact` (blast radius) queries. */
+export const MAX_IMPACT_DEPTH = 10;
+
+/** Maximum DFS depth for `codebase_flow` (call-flow tracing) queries. */
+export const MAX_FLOW_DEPTH = 10;
+
+/** Number of name-index shards (a–z + `_` for everything else). */
+export const SYMBOL_NAME_SHARDS = 27;
+
+/** Number of reverse-call file-index shards (single-byte SHA1 prefix). */
+export const SYMBOL_REVERSE_SHARDS = 256;
+
+/** LRU capacity (in files) for lazy-loaded per-file symbol payloads. */
+export const SYMBOL_FILE_LRU_SIZE = 500;
+
+/**
+ * Conventional entry-point function names per language. Used by
+ * `detectEntryPoints()` heuristic #2.
+ */
+export const ENTRY_POINT_NAMES: Record<string, Set<string>> = {
+  javascript: new Set(["main"]),
+  typescript: new Set(["main"]),
+  python: new Set(["main"]),
+  go: new Set(["main"]),
+  rust: new Set(["main"]),
+  java: new Set(["main"]),
+  kotlin: new Set(["main"]),
+  scala: new Set(["main"]),
+  c: new Set(["main"]),
+  cpp: new Set(["main"]),
+  csharp: new Set(["Main"]),
+  swift: new Set(["main"]),
+  ruby: new Set(["main"]),
+  php: new Set(["main"]),
+};
+
 // ── File type configuration ─────────────────────────────────────────────
 
 export const SUPPORTED_EXTENSIONS = new Set([

@@ -232,11 +232,23 @@ server.tool(
 
 server.tool(
   "codebase_graph_visualize",
-  "Generate a visual Mermaid diagram of the code dependency graph, color-coded by language with circular dependencies highlighted.",
+  [
+    "Visualise the code dependency graph. Two modes:",
+    "  • mode=\"mermaid\" (default) — returns a Mermaid diagram (text) colour-coded by language, circular deps highlighted. Best for inline rendering inside chat, GitHub, or editors that render Mermaid.",
+    "  • mode=\"interactive\" — writes a self-contained HTML page (vendored Cytoscape.js + Dagre, works offline) and opens it in the user's default browser. Shows the file graph and, when a symbol graph is available and fits, a Symbols toggle with the symbol-level call graph. Interactions: click node for sidebar with imports/dependents/symbols list; right-click node to highlight its blast radius (reverse-transitive closure); live search; layout switcher (Dagre / force / concentric / breadth-first / grid / circle); PNG export. Use this when the user asks for a visual/interactive view, wants to explore visually, or needs a shareable diagram.",
+  ].join("\n"),
   {
     projectPath: z
       .string()
       .describe("Absolute path to the project directory.")
+      .optional(),
+    mode: z
+      .enum(["mermaid", "interactive"])
+      .describe("\"mermaid\" (default — text diagram) or \"interactive\" (browser-based explorer).")
+      .optional(),
+    open: z
+      .boolean()
+      .describe("In interactive mode, whether to auto-open the browser. Default true. Set false to just get the file path (useful in headless environments).")
       .optional(),
   },
   async (args) => ({
@@ -266,6 +278,62 @@ server.tool(
   },
   async (args) => ({
     content: [{ type: "text", text: await handleGraphTool("codebase_graph_status", args) }],
+  }),
+);
+
+// ── Impact analysis (symbol-level call graph) ───────────────────────────
+
+server.tool(
+  "codebase_impact",
+  "Impact Analysis — return the BLAST RADIUS for a file or symbol. Lists every file (and, where helpful, function) that could break if you change the target. Polymorphic on target: a path-like string ('src/foo.ts') triggers file-mode; a name-like string ('validateUser') triggers symbol-mode. Use this BEFORE refactoring, renaming, or deleting code to know what depends on it.",
+  {
+    projectPath: z.string().describe("Absolute path to the project directory.").optional(),
+    target: z.string().describe("Target file path (relative) OR symbol name."),
+    depth: z.number().describe("How many hops back to walk (default 3, max 10).").optional(),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await handleGraphTool("codebase_impact", args) }],
+  }),
+);
+
+server.tool(
+  "codebase_flow",
+  "Trace the EXECUTION FLOW forward from an entry point — what does this code call into? With NO args, returns a ranked list of auto-detected entry points (orphans with outgoing calls, conventional names like main(), framework routes, tests). With an entrypoint argument, returns the call tree.",
+  {
+    projectPath: z.string().describe("Absolute path to the project directory.").optional(),
+    entrypoint: z.string().describe("Symbol name to trace from. Omit to list auto-detected entry points.").optional(),
+    file: z.string().describe("Optional file hint to disambiguate the symbol.").optional(),
+    depth: z.number().describe("Maximum DFS depth (default 5, max 10).").optional(),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await handleGraphTool("codebase_flow", args) }],
+  }),
+);
+
+server.tool(
+  "codebase_symbol",
+  "360° view of a symbol: definition, kind, callers, callees, confidence levels. Use to understand a function or class before changing it.",
+  {
+    projectPath: z.string().describe("Absolute path to the project directory.").optional(),
+    name: z.string().describe("Symbol name (e.g. 'validateUser')."),
+    file: z.string().describe("Optional file hint to disambiguate when the name is not unique.").optional(),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await handleGraphTool("codebase_symbol", args) }],
+  }),
+);
+
+server.tool(
+  "codebase_symbols",
+  "List symbols in a file, or search by name across the project. Use to discover what exists before drilling into a single symbol with codebase_symbol.",
+  {
+    projectPath: z.string().describe("Absolute path to the project directory.").optional(),
+    file: z.string().describe("Relative file path — list all symbols in this file.").optional(),
+    query: z.string().describe("Substring to match against symbol names project-wide.").optional(),
+    limit: z.number().describe("Maximum results (default 200).").optional(),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await handleGraphTool("codebase_symbols", args) }],
   }),
 );
 

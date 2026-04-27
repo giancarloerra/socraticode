@@ -13,7 +13,7 @@ Instead, email **[giancarlo@altaire.com](mailto:giancarlo@altaire.com)** with:
 - Potential impact
 - Any suggested fixes (optional)
 
-You will receive an acknowledgment within 48 hours and a detailed response within 7 days indicating next steps.
+You will receive an acknowledgement within 48 hours and a detailed response within 7 days indicating next steps.
 
 ## Scope
 

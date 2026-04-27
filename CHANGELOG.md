@@ -4,6 +4,14 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.7.1](https://github.com/giancarloerra/socraticode/compare/v1.7.0...v1.7.1) (2026-04-27)
+
+### Bug Fixes
+
+* **graph:** make C# namespace resolution deterministic ([fc249fd](https://github.com/giancarloerra/socraticode/commit/fc249fdfcf0afb2225fc4df711552bfa745ade86))
+* **graph:** resolve C# using directives via namespace scan (closes [#33](https://github.com/giancarloerra/socraticode/issues/33)) ([0aaf3f1](https://github.com/giancarloerra/socraticode/commit/0aaf3f1d7521ccbee01142c71433d78a7442fc46))
+* **graph:** tighten C# namespace regex; capture nested declarations ([ea69a72](https://github.com/giancarloerra/socraticode/commit/ea69a721459039b9995e93c3d6a094327ffcb7a4)), closes [#34](https://github.com/giancarloerra/socraticode/issues/34)
+
 ## [1.7.0](https://github.com/giancarloerra/socraticode/compare/v1.6.1...v1.7.0) (2026-04-27)
 
 ### Features

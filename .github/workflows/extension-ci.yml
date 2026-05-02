@@ -1,0 +1,55 @@
+name: Extension CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "extension/**"
+      - ".github/workflows/extension-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "extension/**"
+      - ".github/workflows/extension-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lint-build-package:
+    name: Lint, typecheck, build, package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run compile
+
+      - name: Package .vsix
+        run: npm run package
+
+      - name: Upload .vsix artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: socraticode-vsix
+          path: extension/*.vsix
+          if-no-files-found: error
+          retention-days: 7

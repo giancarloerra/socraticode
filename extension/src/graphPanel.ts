@@ -58,7 +58,7 @@ export async function openInteractiveGraph(projectId?: string): Promise<void> {
     currentPanel = undefined;
   });
   currentPanel.webview.onDidReceiveMessage((msg: unknown) => {
-    handleWebviewMessage(msg);
+    void handleWebviewMessage(msg);
   });
   currentPanel.webview.html = wrapHtml(html, currentPanel.webview);
 }
@@ -66,7 +66,17 @@ export async function openInteractiveGraph(projectId?: string): Promise<void> {
 async function loadGraphHtml(projectId?: string): Promise<string | undefined> {
   let target: string | undefined;
   if (projectId) {
-    target = path.join(GRAPH_DIR, `${projectId}.html`);
+    // The `socraticode.openInteractiveGraph` command accepts a projectId
+    // argument from any caller (palette, sidebar, other extensions). A
+    // value like `../../etc/passwd` would escape GRAPH_DIR via path.join.
+    // Resolve and confirm the result stays inside GRAPH_DIR.
+    const candidate = path.resolve(GRAPH_DIR, `${projectId}.html`);
+    const dirResolved = path.resolve(GRAPH_DIR);
+    if (candidate !== dirResolved && !candidate.startsWith(dirResolved + path.sep)) {
+      log(`Graph panel: rejecting suspicious projectId: ${projectId}`);
+      return undefined;
+    }
+    target = candidate;
   } else {
     // Pick the most recently modified graph file.
     try {
@@ -185,7 +195,7 @@ function wrapHtml(html: string, webview: vscode.Webview): string {
   return `<!DOCTYPE html><html><head>${cspMeta}${bridge}</head><body>${html}</body></html>`;
 }
 
-function handleWebviewMessage(msg: unknown): void {
+async function handleWebviewMessage(msg: unknown): Promise<void> {
   if (typeof msg !== "object" || msg === null) return;
   const m = msg as { type?: string; path?: string; line?: number };
   if (m.type !== "openFile" || typeof m.path !== "string") return;
@@ -212,13 +222,25 @@ function handleWebviewMessage(msg: unknown): void {
   }
 
   const uri = vscode.Uri.joinPath(ws.uri, ...normalised.split("/"));
-  const lineIndex =
-    typeof m.line === "number" && Number.isInteger(m.line) && m.line > 0 ? m.line - 1 : undefined;
-  const selection =
-    lineIndex !== undefined ? new vscode.Range(lineIndex, 0, lineIndex, 0) : undefined;
-  void vscode.window
-    .showTextDocument(uri, selection ? { selection } : {})
-    .then(undefined, (err) =>
-      log(`Graph panel: failed to open ${normalised}: ${(err as Error).message}`),
-    );
+
+  // Open the document first, then clamp the requested line number against
+  // the actual document length. A malformed message with a huge `m.line`
+  // (e.g. Number.MAX_SAFE_INTEGER) would otherwise build a Range far past
+  // the end of the file. We only check `m.line > 0` and `Number.isInteger`
+  // here because the upper bound depends on what we just opened.
+  let editor: vscode.TextEditor;
+  try {
+    editor = await vscode.window.showTextDocument(uri);
+  } catch (err) {
+    log(`Graph panel: failed to open ${normalised}: ${(err as Error).message}`);
+    return;
+  }
+
+  if (typeof m.line === "number" && Number.isInteger(m.line) && m.line > 0) {
+    const lastLine = Math.max(0, editor.document.lineCount - 1);
+    const lineIndex = Math.min(m.line - 1, lastLine);
+    const range = new vscode.Range(lineIndex, 0, lineIndex, 0);
+    editor.selection = new vscode.Selection(range.start, range.end);
+    editor.revealRange(range);
+  }
 }

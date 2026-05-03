@@ -8,10 +8,10 @@
 Same understanding of your code, every assistant, every tool switch.</p>
 
 <p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=altaire.socraticode"><img src="https://img.shields.io/visual-studio-marketplace/v/altaire.socraticode?style=flat-square&logo=visualstudiocode&logoColor=white&label=VS%20Code%20Marketplace" alt="VS Code Marketplace"></a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=altaire.socraticode"><img src="https://img.shields.io/visual-studio-marketplace/i/altaire.socraticode?style=flat-square&label=installs" alt="Installs"></a>
-  <a href="https://open-vsx.org/extension/altaire/socraticode"><img src="https://img.shields.io/open-vsx/v/altaire/socraticode?style=flat-square&label=Open%20VSX" alt="Open VSX"></a>
-  <a href="https://open-vsx.org/extension/altaire/socraticode"><img src="https://img.shields.io/open-vsx/dt/altaire/socraticode?style=flat-square&label=downloads" alt="Open VSX Downloads"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=giancarloerra.socraticode"><img src="https://img.shields.io/visual-studio-marketplace/v/giancarloerra.socraticode?style=flat-square&logo=visualstudiocode&logoColor=white&label=VS%20Code%20Marketplace" alt="VS Code Marketplace"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=giancarloerra.socraticode"><img src="https://img.shields.io/visual-studio-marketplace/i/giancarloerra.socraticode?style=flat-square&label=installs" alt="Installs"></a>
+  <a href="https://open-vsx.org/extension/giancarloerra/socraticode"><img src="https://img.shields.io/open-vsx/v/giancarloerra/socraticode?style=flat-square&label=Open%20VSX" alt="Open VSX"></a>
+  <a href="https://open-vsx.org/extension/giancarloerra/socraticode"><img src="https://img.shields.io/open-vsx/dt/giancarloerra/socraticode?style=flat-square&label=downloads" alt="Open VSX Downloads"></a>
   <a href="https://github.com/giancarloerra/socraticode"><img src="https://img.shields.io/github/stars/giancarloerra/socraticode?style=flat-square&logo=github&label=stars" alt="GitHub stars"></a>
   <a href="https://discord.gg/5DrMXfNG"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://www.npmjs.com/package/socraticode"><img src="https://img.shields.io/npm/v/socraticode?style=flat-square&logo=npm&label=engine" alt="npm engine"></a>

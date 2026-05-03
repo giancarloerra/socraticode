@@ -13,6 +13,7 @@ Same understanding of your code, every assistant, every tool switch.</p>
   <a href="https://open-vsx.org/extension/altaire/socraticode"><img src="https://img.shields.io/open-vsx/v/altaire/socraticode?style=flat-square&label=Open%20VSX" alt="Open VSX"></a>
   <a href="https://open-vsx.org/extension/altaire/socraticode"><img src="https://img.shields.io/open-vsx/dt/altaire/socraticode?style=flat-square&label=downloads" alt="Open VSX Downloads"></a>
   <a href="https://github.com/giancarloerra/socraticode"><img src="https://img.shields.io/github/stars/giancarloerra/socraticode?style=flat-square&logo=github&label=stars" alt="GitHub stars"></a>
+  <a href="https://discord.gg/5DrMXfNG"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://www.npmjs.com/package/socraticode"><img src="https://img.shields.io/npm/v/socraticode?style=flat-square&logo=npm&label=engine" alt="npm engine"></a>
   <a href="https://github.com/giancarloerra/socraticode/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="License"></a>
 </p>
@@ -27,10 +28,7 @@ Same understanding of your code, every assistant, every tool switch.</p>
 
 This extension auto-registers the SocratiCode MCP server in any
 MCP-compatible chat or agent in your editor, with no `mcp.json` editing
-required. The same `.vsix` ships to the VS Code Marketplace and the
-Open VSX Registry, so it works the same way in **VS Code, Cursor,
-VSCodium, Gitpod, code-server, Eclipse Theia, Google Antigravity, and
-Particle Workbench**.
+required.
 
 ## What it does
 
@@ -54,7 +52,7 @@ Particle Workbench**.
 - **Branch-aware indexing**: every branch gets its own index, so PR
   reviews see the code actually being reviewed.
 
-## Why bigger teams pick it
+## Built for real-world big teams and projects
 
 - **Refactor safety on a monorepo.** Blast-radius analysis surfaces
   every file and symbol that calls into a target before any change
@@ -73,34 +71,6 @@ Particle Workbench**.
 - **18+ languages out of the box.** TypeScript, JavaScript, Python, Go,
   Rust, Java, Kotlin, Scala, C#, C, C++, Ruby, PHP, Swift, Bash, Dart,
   Lua, Svelte, Vue, plus 35+ plain-text formats.
-
-## Compatibility
-
-**Editors.** This extension installs in any editor that supports the
-VS Code 1.99+ extension API:
-
-- Microsoft VS Code (Stable / Insiders)
-- Cursor
-- VSCodium
-- Gitpod
-- code-server
-- Eclipse Theia based editors
-- Google Antigravity
-- Particle Workbench
-
-**AI surfaces.** The MCP server registered by this extension is
-discovered automatically by any MCP-compatible chat or agent installed
-in your editor:
-
-- GitHub Copilot agent mode
-- Cursor's Agent / Composer
-- The Gemini chat surface in Antigravity
-- [Cline](https://github.com/cline/cline)
-- [Continue](https://www.continue.dev/)
-- [Roo Code](https://roo.tech/)
-- Any other MCP-aware client, including ones not listed here
-
-If your editor or AI surface speaks MCP, SocratiCode shows up.
 
 ## Quick start
 
@@ -145,6 +115,44 @@ All commands appear under `SocratiCode:` in the Command Palette.
 | `socraticode.args` | `["-y", "socraticode"]` | Args for the launcher. |
 | `socraticode.env` | `{}` | Environment variables forwarded to the engine. Use this to point at an external Qdrant cluster (`QDRANT_MODE=external`, `QDRANT_URL`, `QDRANT_API_KEY`), pick an embedding provider (`EMBEDDING_PROVIDER`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`), enable branch-aware indexing, link multiple projects, or set any other engine knob from the [engine README](https://github.com/giancarloerra/socraticode#configuration). |
 | `socraticode.statusBar` | `true` | Show the status-bar item. |
+
+## Compatibility
+
+**Editors.** This extension installs in any editor that supports the
+VS Code 1.99+ extension API:
+
+- Microsoft VS Code (Stable / Insiders)
+- Cursor
+- VSCodium
+- Gitpod
+- code-server
+- Eclipse Theia based editors
+- Google Antigravity
+- Particle Workbench
+
+**AI surfaces.** The MCP server registered by this extension is
+discovered automatically by any MCP-compatible chat or agent installed
+in your editor:
+
+- GitHub Copilot agent mode
+- Cursor's Agent / Composer
+- The Gemini chat surface in Antigravity
+- [Cline](https://github.com/cline/cline)
+- [Continue](https://www.continue.dev/)
+- [Roo Code](https://roo.tech/)
+- Any other MCP-aware client, including ones not listed here
+
+If your editor or AI surface speaks MCP, SocratiCode shows up.
+
+## SocratiCode Cloud (private beta)
+
+The same engine, hosted by us. Adds managed infrastructure (no Docker
+or Qdrant or Ollama on your machine), webhook-driven auto-indexing on
+every push and every branch, shared team indexes across your whole
+organisation, SSO/SAML, audit logs, and SOC 2 / ISO 27001-aligned
+controls. Currently in private beta.
+
+[Request access at socraticode.cloud →](https://socraticode.cloud)
 
 ## Privacy and data
 

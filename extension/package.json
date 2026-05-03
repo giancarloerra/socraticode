@@ -6,6 +6,10 @@
   "publisher": "altaire",
   "license": "AGPL-3.0-only",
   "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#3a3d8c",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.99.0",
     "node": ">=18.0.0"

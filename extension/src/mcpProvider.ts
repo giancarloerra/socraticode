@@ -43,8 +43,25 @@ export class SocratiCodeMcpProvider implements vscode.McpServerDefinitionProvide
   }
 }
 
-export function registerMcpProvider(context: vscode.ExtensionContext): SocratiCodeMcpProvider {
+export function registerMcpProvider(
+  context: vscode.ExtensionContext,
+): SocratiCodeMcpProvider | undefined {
   const provider = new SocratiCodeMcpProvider();
+
+  // The `engines.vscode: ^1.99.0` field in package.json prevents
+  // installation on hosts without the MCP API, but some VS Code-derived
+  // editors lie about their reported version. Defensively check that
+  // the API surface exists before calling it, so activation degrades
+  // gracefully (sidebar / commands / status bar still work) instead of
+  // throwing a hard error that disables the entire extension.
+  if (typeof vscode.lm?.registerMcpServerDefinitionProvider !== "function") {
+    log(
+      "vscode.lm.registerMcpServerDefinitionProvider is unavailable in this host; " +
+        "skipping MCP server registration. Sidebar, commands and status bar still work.",
+    );
+    return undefined;
+  }
+
   const disposable = vscode.lm.registerMcpServerDefinitionProvider("socraticode.mcp", provider);
   context.subscriptions.push(disposable);
   log("Registered SocratiCode MCP server provider");

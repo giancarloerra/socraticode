@@ -7,9 +7,9 @@ Index the workspace:
    Index current workspace** from the command palette.
 
 The first index downloads the embedding model if it's not already cached
-(roughly 700 MB for the default `mxbai-embed-large`), then walks the
-workspace. Subsequent updates are incremental and triggered automatically
-when files change.
+(the default is `nomic-embed-text` via the local Docker Ollama, a few
+hundred megabytes), then walks the workspace. Subsequent updates are
+incremental and triggered automatically when files change.
 
 ## What gets indexed
 

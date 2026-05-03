@@ -109,7 +109,9 @@ export function registerSidebar(context: vscode.ExtensionContext): ProjectsTreeP
 }
 
 function formatRelative(date: Date): string {
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
+  // Clamp to zero so a file mtime slightly ahead of the local clock
+  // (NTP correction, container clock skew) doesn't render "-5s ago".
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;

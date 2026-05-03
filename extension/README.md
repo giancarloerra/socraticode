@@ -126,7 +126,7 @@ VS Code 1.99+ extension API:
 - VSCodium
 - Gitpod
 - code-server
-- Eclipse Theia based editors
+- Eclipse Theia-based editors
 - Google Antigravity
 - Particle Workbench
 

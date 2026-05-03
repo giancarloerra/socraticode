@@ -153,7 +153,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Environment variables forwarded to the engine. Use this to point at an external Qdrant (`QDRANT_MODE=external`, `QDRANT_URL`, `QDRANT_API_KEY`), select an embedding provider (`EMBEDDING_PROVIDER`, `OPENAI_API_KEY`, etc.), or any other engine setting documented in the engine README.",
+          "description": "Non-secret environment variables forwarded to the engine. Use this for non-sensitive engine config like external Qdrant URL (`QDRANT_MODE=external`, `QDRANT_URL`), embedding provider selection (`EMBEDDING_PROVIDER`), project IDs, branch-aware indexing, and so on. AVOID storing API keys or tokens here: workspace settings can be synced via VS Code Settings Sync and may end up in committed `.vscode/settings.json` files. For secrets, prefer OS environment variables, a local `.env` file outside settings, or a system keychain.",
           "scope": "window"
         },
         "socraticode.statusBar": {

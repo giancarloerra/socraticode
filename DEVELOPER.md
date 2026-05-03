@@ -1417,7 +1417,7 @@ Source: [`extension/`](./extension)
 
 ### Layout
 
-```
+```text
 extension/
 ├── package.json               # extension manifest
 ├── tsconfig.json              # TS strict, ES2022, Node 18 target
@@ -1434,7 +1434,7 @@ extension/
     ├── graphPanel.ts          # webview panel for the interactive graph
     ├── statusBar.ts           # status-bar item
     ├── commands.ts            # command palette commands
-    ├── settings.ts            # typed config + SecretStorage
+    ├── settings.ts            # typed config accessors
     ├── output.ts              # log/output channel
     └── __tests__/             # node:test smoke tests for the manifest
 ```

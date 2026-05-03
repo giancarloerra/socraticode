@@ -31,15 +31,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerCommands(context, sidebar);
 
   // Show the walkthrough on first install. We use globalState rather than
-  // a setting so it's per-machine, not per-workspace.
+  // a setting so it's per-machine, not per-workspace. Persist the
+  // "shown" flag only AFTER the command resolves, so if the host fails
+  // to open the walkthrough (some VS Code forks don't expose
+  // `workbench.action.openWalkthrough`), the user is offered it again
+  // next session instead of silently skipping it forever.
   const shown = context.globalState.get<boolean>(FIRST_RUN_KEY, false);
   if (!shown) {
-    void context.globalState.update(FIRST_RUN_KEY, true);
-    void vscode.commands.executeCommand(
-      "workbench.action.openWalkthrough",
-      `${context.extension.id}#socraticode.gettingStarted`,
-      false,
-    );
+    try {
+      await vscode.commands.executeCommand(
+        "workbench.action.openWalkthrough",
+        `${context.extension.id}#socraticode.gettingStarted`,
+        false,
+      );
+      await context.globalState.update(FIRST_RUN_KEY, true);
+    } catch (err) {
+      log(`Failed to open first-run walkthrough: ${(err as Error).message}`);
+    }
   }
 
   log("SocratiCode extension activated");

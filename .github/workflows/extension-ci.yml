@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   lint-build-package:
-    name: Lint, typecheck, build, package
+    name: Lint, typecheck, test, build, package
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,6 +39,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run compile

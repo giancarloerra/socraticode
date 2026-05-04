@@ -2,7 +2,7 @@
   "name": "socraticode",
   "displayName": "SocratiCode",
   "description": "Codebase context engine for AI assistants. Hybrid search, dependency and call graphs, symbol-level impact analysis (blast radius), interactive graph explorer, and searchable architecture artefacts. Works with Copilot agent mode, Cline, Continue, Roo Code, and any MCP-compatible host.",
-  "version": "1.7.2",
+  "version": "1.8.0",
   "publisher": "giancarloerra",
   "license": "AGPL-3.0-only",
   "icon": "images/icon.png",

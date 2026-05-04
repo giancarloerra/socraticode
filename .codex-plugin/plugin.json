@@ -1,6 +1,6 @@
 {
   "name": "socraticode",
-  "version": "1.7.2",
+  "version": "1.8.0",
   "description": "Codebase intelligence: semantic search workflows, dependency graph analysis, and context artifact exploration for SocratiCode",
   "author": {
     "name": "Giancarlo Erra",
@@ -26,7 +26,9 @@
     "longDescription": "SocratiCode provides codebase intelligence through semantic search workflows, dependency graph analysis, and context artifact exploration. Index your codebase, search with hybrid semantic + keyword search, visualize module dependencies, and manage context artifacts.",
     "developerName": "Giancarlo Erra",
     "category": "Development",
-    "capabilities": ["Read"],
+    "capabilities": [
+      "Read"
+    ],
     "websiteURL": "https://github.com/giancarloerra/socraticode",
     "privacyPolicyURL": "https://github.com/giancarloerra/socraticode/blob/main/SECURITY.md",
     "termsOfServiceURL": "https://github.com/giancarloerra/socraticode/blob/main/LICENSE",

@@ -4,6 +4,23 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.8.0](https://github.com/giancarloerra/socraticode/compare/v1.7.2...v1.8.0) (2026-05-03)
+
+### Features
+
+* **extension:** add VS Code and Open VSX extension ([bbc6819](https://github.com/giancarloerra/socraticode/commit/bbc68199c3577c463c049199b64f36ad5ddebb66))
+
+### Bug Fixes
+
+* **extension:** harden review-flagged paths ([562a946](https://github.com/giancarloerra/socraticode/commit/562a946053e79e3236950bb715a30762c2853869))
+* **extension:** tighten graphPanel path and line-number bounds ([c2d012f](https://github.com/giancarloerra/socraticode/commit/c2d012fe4c72704dd431b34124b3b6f3c06b485a))
+
+### Documentation
+
+* **extension:** add Discord badge and hosted-edition pointer ([9a197b3](https://github.com/giancarloerra/socraticode/commit/9a197b3421d30f101d832ce0de0659405c5a0df7))
+* **extension:** editor-neutral marketplace README with hero, badges and benchmarks ([345c728](https://github.com/giancarloerra/socraticode/commit/345c7281d0c8df7b370f2d38d38012fdd09e2701))
+* surface VS Code / Open VSX extension and Cursor Marketplace ([d9459f8](https://github.com/giancarloerra/socraticode/commit/d9459f8591fb4085f49d358b2787be91058ac79a))
+
 ## [1.7.2](https://github.com/giancarloerra/socraticode/compare/v1.7.1...v1.7.2) (2026-04-28)
 
 ### Bug Fixes

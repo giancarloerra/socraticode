@@ -179,9 +179,20 @@ export class LMStudioEmbeddingProvider implements EmbeddingProvider {
     // No `dimensions` parameter: LM Studio doesn't implement Matryoshka projection.
     // The model returns its native dimension and we trust the user to have set
     // EMBEDDING_DIMENSIONS to match.
+    //
+    // `encoding_format: "float"` is REQUIRED. The OpenAI SDK (6.x+) defaults to
+    // `encoding_format: "base64"` for performance, then unconditionally decodes the
+    // response with toFloat32Array(). LM Studio ignores `encoding_format` and always
+    // returns a plain JSON array of floats. The SDK's decode path then runs
+    // `Buffer.from(<array>, 'base64')` — Node.js silently drops the encoding for
+    // array inputs and clamps each float (<1.0) to uint8 0, producing a 4096-byte
+    // zero buffer that gets reinterpreted as a 1024-element Float32Array of zeros.
+    // Setting `encoding_format: "float"` makes the SDK skip the decode step entirely
+    // (see openai-node/src/resources/embeddings.ts: `if (hasUserProvidedEncodingFormat)`).
     const response = await client.embeddings.create({
       model,
       input: texts,
+      encoding_format: "float",
     });
     const sorted = response.data.sort((a, b) => a.index - b.index);
     return sorted.map((d) => d.embedding);

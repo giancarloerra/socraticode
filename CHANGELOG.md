@@ -4,6 +4,17 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.8.2](https://github.com/giancarloerra/socraticode/compare/v1.8.1...v1.8.2) (2026-05-04)
+
+### Bug Fixes
+
+* cover JVM annotation and Scala callable edge cases ([6a76ad4](https://github.com/giancarloerra/socraticode/commit/6a76ad478275d6e65d58d00684414f4936ef4f83))
+* extract JVM symbol names from declarations ([019eba0](https://github.com/giancarloerra/socraticode/commit/019eba058356539d23d4212a9387c5821d4a3f47))
+
+### Tests
+
+* cover JVM annotations with parameters ([1dbc1eb](https://github.com/giancarloerra/socraticode/commit/1dbc1eb398014d418f97879a875d003c28f8b608))
+
 ## [1.8.1](https://github.com/giancarloerra/socraticode/compare/v1.8.0...v1.8.1) (2026-05-04)
 
 ### Bug Fixes

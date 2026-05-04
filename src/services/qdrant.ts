@@ -337,22 +337,44 @@ async function searchChunksWithVector(
   const prefetchLimit = Math.max(limit * 3, 30);
   const activeFilter = filter.must.length > 0 ? filter : undefined;
 
+  // DIAGNOSTIC (temporary): wrap qdrant.query to log payload, full error body, and
+  // attempt a raw fetch to capture the server's actual error message.
+  const queryPayload = {
+    prefetch: [
+      { query: queryVector, using: "dense", limit: prefetchLimit, filter: activeFilter },
+      {
+        query: { text: query, model: "qdrant/bm25" },
+        using: "bm25",
+        limit: prefetchLimit,
+        filter: activeFilter,
+      },
+    ],
+    query: { fusion: "rrf" },
+    limit,
+    with_payload: true,
+    filter: activeFilter,
+  };
+  logger.debug("Qdrant hybrid search payload", {
+    collectionName,
+    queryVectorLen: queryVector.length,
+    payloadJson: JSON.stringify(queryPayload).slice(0, 2000),
+  });
   const results = await withRetry(
-    () => qdrant.query(collectionName, {
-      prefetch: [
-        { query: queryVector, using: "dense", limit: prefetchLimit, filter: activeFilter },
-        {
-          query: { text: query, model: "qdrant/bm25" },
-          using: "bm25",
-          limit: prefetchLimit,
-          filter: activeFilter,
-        },
-      ],
-      query: { fusion: "rrf" },
-      limit,
-      with_payload: true,
-      filter: activeFilter,
-    }),
+    async () => {
+      try {
+        return await qdrant.query(collectionName, queryPayload);
+      } catch (err) {
+        // Surface the full error: HTTP status, response body, headers
+        const e = err as { status?: number; statusText?: string; data?: unknown; message?: string };
+        logger.error("Qdrant hybrid search raw error", {
+          status: e.status,
+          statusText: e.statusText,
+          data: typeof e.data === "string" ? e.data.slice(0, 2000) : e.data,
+          message: e.message,
+        });
+        throw err;
+      }
+    },
     "Qdrant hybrid search",
   );
 

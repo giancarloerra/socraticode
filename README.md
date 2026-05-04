@@ -32,6 +32,8 @@
   Kindly sponsored by <a href="https://altaire.com">Altaire Limited</a>
 </p>
 
+> 🛡️ **Need MCP governance together with codebase context?** See our sibling project [**JanuScope**](https://github.com/giancarloerra/januscope) — the local-first MCP policy proxy: tool blocking, SQL-mutation gate, PII redaction, audit, rate-limit.
+
 > If SocratiCode has been useful to you, please ⭐ **star this repo** — it helps others discover it — and share it with your dev team and fellow developers!
 >
 > 💬 Questions or just want to chat? Join us on [Discord](https://discord.gg/5DrMXfNG).

@@ -189,6 +189,19 @@ export function resolveImport(
         );
         if (inSrc) return inSrc;
       }
+
+      // Sibling-flat fallback (issue #46). Common in service-style monorepos
+      // where each top-level directory is a runnable Python application root
+      // and `import config` from `service-a/main.py` means
+      // `service-a/config.py` because the file is run via `python main.py`
+      // from inside its own directory. Tried last to preserve existing
+      // project-root precedence: any layout that already resolved before
+      // this PR continues to resolve to the same file. resolveRelativePath
+      // also handles the `<sourceDir>/<module>/__init__.py` package case
+      // via its built-in Python init fallback.
+      const sibling = resolveRelativePath(modulePath, sourceDir, projectPath, fileSet, [".py"]);
+      if (sibling) return sibling;
+
       return null;
     }
 

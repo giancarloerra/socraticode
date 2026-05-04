@@ -268,6 +268,103 @@ describe("graph-resolution", () => {
 
       expect(result).toBe("src/mypackage/utils.py");
     });
+
+    it("resolves sibling-flat imports in service-style monorepos (#46)", () => {
+      // service-a/main.py runs as `python main.py` from inside service-a/,
+      // so `import config` resolves to service-a/config.py at runtime.
+      project = createTempProject({
+        "service-a/main.py": "",
+        "service-a/config.py": "",
+        "service-b/main.py": "",
+        "service-b/config.py": "",
+      });
+
+      const result = resolveImport(
+        "config",
+        path.join(project.root, "service-a/main.py"),
+        project.root,
+        project.fileSet,
+        "python",
+      );
+
+      expect(result).toBe("service-a/config.py");
+    });
+
+    it("resolves sibling-flat imports for dotted module paths", () => {
+      // `import shared.utils` from service-a/main.py with shared/utils.py
+      // sitting next to main.py.
+      project = createTempProject({
+        "service-a/main.py": "",
+        "service-a/shared/utils.py": "",
+      });
+
+      const result = resolveImport(
+        "shared.utils",
+        path.join(project.root, "service-a/main.py"),
+        project.root,
+        project.fileSet,
+        "python",
+      );
+
+      expect(result).toBe("service-a/shared/utils.py");
+    });
+
+    it("resolves sibling packages via __init__.py", () => {
+      // `import config` resolves to service-a/config/__init__.py when no
+      // bare service-a/config.py exists.
+      project = createTempProject({
+        "service-a/main.py": "",
+        "service-a/config/__init__.py": "",
+      });
+
+      const result = resolveImport(
+        "config",
+        path.join(project.root, "service-a/main.py"),
+        project.root,
+        project.fileSet,
+        "python",
+      );
+
+      expect(result).toBe("service-a/config/__init__.py");
+    });
+
+    it("preserves project-root precedence when the same name exists at root and as a sibling", () => {
+      // Backward-compat guarantee: `import config` from service-a/main.py
+      // still resolves to the project-root config.py if one exists, so
+      // existing layouts do not change after this PR. The sibling fallback
+      // only fires when the project-root lookup fails.
+      project = createTempProject({
+        "config.py": "",
+        "service-a/main.py": "",
+        "service-a/config.py": "",
+      });
+
+      const result = resolveImport(
+        "config",
+        path.join(project.root, "service-a/main.py"),
+        project.root,
+        project.fileSet,
+        "python",
+      );
+
+      expect(result).toBe("config.py");
+    });
+
+    it("returns null when neither project-root, src/, lib/, nor sibling have the module", () => {
+      project = createTempProject({
+        "service-a/main.py": "",
+      });
+
+      const result = resolveImport(
+        "config",
+        path.join(project.root, "service-a/main.py"),
+        project.root,
+        project.fileSet,
+        "python",
+      );
+
+      expect(result).toBeNull();
+    });
   });
 
   describe("Rust resolution", () => {

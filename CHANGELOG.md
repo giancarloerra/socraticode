@@ -4,6 +4,12 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.8.1](https://github.com/giancarloerra/socraticode/compare/v1.8.0...v1.8.1) (2026-05-04)
+
+### Bug Fixes
+
+* **docs:** replace broken Marketplace badges and surface listings in main README ([8d6cb86](https://github.com/giancarloerra/socraticode/commit/8d6cb86b274132c0f65e46b3396e36a0b8e1f3cd))
+
 ## [1.8.0](https://github.com/giancarloerra/socraticode/compare/v1.7.2...v1.8.0) (2026-05-03)
 
 ### Features

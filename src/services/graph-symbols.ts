@@ -470,10 +470,8 @@ function extractFromJvm(
     : ["class_declaration", "interface_declaration", "enum_declaration", "object_declaration"];
   for (const k of classKinds) {
     for (const cls of safeFindAll(root, k)) {
-      const nameNode = cls.find({ rule: { kind: "type_identifier" } })
-        ?? cls.find({ rule: { kind: "identifier" } });
-      if (!nameNode) continue;
-      const name = nameNode.text();
+      const name = extractJvmTypeName(cls.text(), langKey);
+      if (!name) continue;
       const r = cls.range();
       const startLine = r.start.line + 1;
       const endLine = r.end.line + 1;
@@ -496,10 +494,8 @@ function extractFromJvm(
       : ["method_declaration", "constructor_declaration"];
   for (const k of methodKinds) {
     for (const m of safeFindAll(root, k)) {
-      const nameNode = m.find({ rule: { kind: "identifier" } })
-        ?? m.find({ rule: { kind: "simple_identifier" } });
-      if (!nameNode) continue;
-      const name = nameNode.text();
+      const name = extractJvmCallableName(m.text());
+      if (!name) continue;
       const r = m.range();
       const startLine = r.start.line + 1;
       const endLine = r.end.line + 1;
@@ -531,6 +527,38 @@ function extractFromJvm(
     }
   }
   return { symbols, rawCalls };
+}
+
+function stripJvmAnnotations(text: string): string {
+  return text
+    .split("\n")
+    .map((line) =>
+      line.replace(/^\s*(?:@(?:[\w$]+:)?[\w$.]+(?:\([^)]*\))?\s*)+/, "")
+    )
+    .join("\n");
+}
+
+function extractJvmTypeName(text: string, langKey: string): string | null {
+  const withoutAnnotations = stripJvmAnnotations(text);
+  const header = withoutAnnotations.split("{", 1)[0] ?? withoutAnnotations;
+  const pattern = langKey === "scala"
+    ? /\b(?:class|object|trait)\s+([A-Za-z_$][\w$]*)\b/
+    : /\b(?:class|interface|enum|object)\s+([A-Za-z_$][\w$]*)\b/;
+  return header.match(pattern)?.[1] ?? null;
+}
+
+function extractJvmCallableName(text: string): string | null {
+  const withoutAnnotations = stripJvmAnnotations(text);
+  const signature = withoutAnnotations
+    .split("{", 1)[0]
+    .split("=", 1)[0]
+    .trim();
+  const scalaDefMatches = Array.from(signature.matchAll(/\bdef\s+([A-Za-z_$][\w$]*)\b/g));
+  if (scalaDefMatches.length > 0) {
+    return scalaDefMatches[scalaDefMatches.length - 1][1];
+  }
+  const matches = Array.from(signature.matchAll(/([A-Za-z_$][\w$]*)\s*\(/g));
+  return matches.length > 0 ? matches[matches.length - 1][1] : null;
 }
 
 // ── C# ──────────────────────────────────────────────────────────────────

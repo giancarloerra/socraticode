@@ -4,6 +4,12 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.8.4](https://github.com/giancarloerra/socraticode/compare/v1.8.3...v1.8.4) (2026-05-04)
+
+### Bug Fixes
+
+* **graph:** pre-validate ast-grep grammar libraryPath to survive missing prebuilds ([#44](https://github.com/giancarloerra/socraticode/issues/44)) ([e6ce327](https://github.com/giancarloerra/socraticode/commit/e6ce32710acccd6cb4a241c39a3561803e0e7dbd))
+
 ## [1.8.3](https://github.com/giancarloerra/socraticode/compare/v1.8.2...v1.8.3) (2026-05-04)
 
 ### Features

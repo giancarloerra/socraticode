@@ -337,22 +337,23 @@ async function searchChunksWithVector(
   const prefetchLimit = Math.max(limit * 3, 30);
   const activeFilter = filter.must.length > 0 ? filter : undefined;
 
+  const queryPayload = {
+    prefetch: [
+      { query: queryVector, using: "dense", limit: prefetchLimit, filter: activeFilter },
+      {
+        query: { text: query, model: "qdrant/bm25" },
+        using: "bm25",
+        limit: prefetchLimit,
+        filter: activeFilter,
+      },
+    ],
+    query: { fusion: "rrf" },
+    limit,
+    with_payload: true,
+    filter: activeFilter,
+  };
   const results = await withRetry(
-    () => qdrant.query(collectionName, {
-      prefetch: [
-        { query: queryVector, using: "dense", limit: prefetchLimit, filter: activeFilter },
-        {
-          query: { text: query, model: "qdrant/bm25" },
-          using: "bm25",
-          limit: prefetchLimit,
-          filter: activeFilter,
-        },
-      ],
-      query: { fusion: "rrf" },
-      limit,
-      with_payload: true,
-      filter: activeFilter,
-    }),
+    () => qdrant.query(collectionName, queryPayload),
     "Qdrant hybrid search",
   );
 

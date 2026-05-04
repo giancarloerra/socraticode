@@ -7,6 +7,8 @@
  *   - "ollama" (default): Use Ollama for embeddings (Docker or external).
  *   - "openai": Use OpenAI Embeddings API. Requires OPENAI_API_KEY.
  *   - "google": Use Google Generative AI Embedding API. Requires GOOGLE_API_KEY.
+ *   - "lmstudio": Use a local LM Studio server (OpenAI-compatible). Requires
+ *                 EMBEDDING_MODEL and EMBEDDING_DIMENSIONS to be set explicitly.
  *
  * Ollama-specific:
  *   OLLAMA_MODE:
@@ -26,9 +28,16 @@
  *   OPENAI_API_KEY:        Required for openai provider.
  *   GOOGLE_API_KEY:        Required for google provider.
  *
+ * LM Studio-specific:
+ *   LMSTUDIO_URL:          OpenAI-compatible base URL for LM Studio's local server.
+ *                          Default: http://localhost:1234/v1
+ *   LMSTUDIO_API_KEY:      Optional API key. LM Studio's Local Server has no auth by default;
+ *                          set this only if you've enabled an API key in LM Studio.
+ *
  * Shared:
- *   EMBEDDING_MODEL:       Model name (default depends on provider).
- *   EMBEDDING_DIMENSIONS:  Vector dimensions — must match the model (default depends on provider).
+ *   EMBEDDING_MODEL:       Model name (default depends on provider; required for lmstudio).
+ *   EMBEDDING_DIMENSIONS:  Vector dimensions — must match the model (default depends on
+ *                          provider; required for lmstudio).
  *   EMBEDDING_CONTEXT_LENGTH: Override context window in tokens (auto-detected for known models).
  */
 
@@ -36,7 +45,7 @@ import { logger } from "./logger.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-export type EmbeddingProvider = "ollama" | "openai" | "google";
+export type EmbeddingProvider = "ollama" | "openai" | "google" | "lmstudio";
 export type OllamaMode = "docker" | "external" | "auto";
 
 export interface EmbeddingConfig {
@@ -46,6 +55,8 @@ export interface EmbeddingConfig {
   ollamaMode: OllamaMode;
   /** Ollama API URL (only relevant when embeddingProvider is "ollama"). */
   ollamaUrl: string;
+  /** LM Studio OpenAI-compatible base URL (only relevant when embeddingProvider is "lmstudio"). */
+  lmstudioUrl: string;
   embeddingModel: string;
   embeddingDimensions: number;
   /** Max context window in tokens. Used for client-side pre-truncation. */
@@ -55,10 +66,16 @@ export interface EmbeddingConfig {
 
 // ── Provider defaults ─────────────────────────────────────────────────────
 
+/**
+ * lmstudio has empty defaults: LM Studio has no out-of-the-box model — users must load
+ * one in the UI and choose dimensions to match. We fail-fast in loadEmbeddingConfig()
+ * when the user picks lmstudio without setting EMBEDDING_MODEL / EMBEDDING_DIMENSIONS.
+ */
 const PROVIDER_DEFAULTS: Record<EmbeddingProvider, { model: string; dimensions: number }> = {
-  ollama:  { model: "nomic-embed-text",        dimensions: 768  },
-  openai:  { model: "text-embedding-3-small",  dimensions: 1536 },
-  google:  { model: "gemini-embedding-001",    dimensions: 3072 },
+  ollama:   { model: "nomic-embed-text",        dimensions: 768  },
+  openai:   { model: "text-embedding-3-small",  dimensions: 1536 },
+  google:   { model: "gemini-embedding-001",    dimensions: 3072 },
+  lmstudio: { model: "",                        dimensions: 0    },
 };
 
 // ── Ollama mode defaults ──────────────────────────────────────────────────
@@ -109,13 +126,38 @@ export function loadEmbeddingConfig(): EmbeddingConfig {
 
   // ── Provider ────────────────────────────────────────────────────────
   const rawProvider = process.env.EMBEDDING_PROVIDER || "ollama";
-  if (rawProvider !== "ollama" && rawProvider !== "openai" && rawProvider !== "google") {
+  if (
+    rawProvider !== "ollama" &&
+    rawProvider !== "openai" &&
+    rawProvider !== "google" &&
+    rawProvider !== "lmstudio"
+  ) {
     throw new Error(
-      `Invalid EMBEDDING_PROVIDER: "${rawProvider}". Must be "ollama", "openai", or "google".`,
+      `Invalid EMBEDDING_PROVIDER: "${rawProvider}". Must be "ollama", "openai", "google", or "lmstudio".`,
     );
   }
   const embeddingProvider: EmbeddingProvider = rawProvider;
   const providerDefaults = PROVIDER_DEFAULTS[embeddingProvider];
+
+  // LM Studio has no sensible defaults — model and dimensions vary per loaded model.
+  // Fail fast with an actionable message rather than silently sending empty values.
+  if (embeddingProvider === "lmstudio") {
+    if (!process.env.EMBEDDING_MODEL) {
+      throw new Error(
+        "EMBEDDING_MODEL is required when EMBEDDING_PROVIDER=lmstudio. " +
+        "LM Studio has no built-in default — set it to the model identifier shown in " +
+        "LM Studio's Local Server tab (e.g. EMBEDDING_MODEL=nomic-embed-text-v1.5).",
+      );
+    }
+    if (!process.env.EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        "EMBEDDING_DIMENSIONS is required when EMBEDDING_PROVIDER=lmstudio. " +
+        "Different LM Studio models have different output dimensions — check the model card " +
+        "and set EMBEDDING_DIMENSIONS accordingly (e.g. 768 for nomic-embed-text-v1.5, " +
+        "1024 for bge-large-en-v1.5, 4096 for qwen3-embedding-8b).",
+      );
+    }
+  }
 
   // ── Ollama mode (only relevant for ollama provider) ─────────────────
   const rawMode = process.env.OLLAMA_MODE || "auto";
@@ -145,6 +187,7 @@ export function loadEmbeddingConfig(): EmbeddingConfig {
     embeddingProvider,
     ollamaMode,
     ollamaUrl: process.env.OLLAMA_URL || modeDefaults.url,
+    lmstudioUrl: process.env.LMSTUDIO_URL || "http://localhost:1234/v1",
     embeddingModel,
     embeddingDimensions,
     embeddingContextLength: contextLengthEnv
@@ -167,6 +210,9 @@ export function loadEmbeddingConfig(): EmbeddingConfig {
       ollamaMode: _config.ollamaMode,
       ollamaUrl: _config.ollamaUrl,
     } : {}),
+    ...(embeddingProvider === "lmstudio" ? {
+      lmstudioUrl: _config.lmstudioUrl,
+    } : {}),
     embeddingModel: _config.embeddingModel,
     embeddingDimensions: _config.embeddingDimensions,
     embeddingContextLength: _config.embeddingContextLength || "auto",
@@ -174,7 +220,11 @@ export function loadEmbeddingConfig(): EmbeddingConfig {
       ? _config.ollamaApiKey
       : embeddingProvider === "openai"
         ? process.env.OPENAI_API_KEY
-        : process.env.GOOGLE_API_KEY),
+        : embeddingProvider === "google"
+          ? process.env.GOOGLE_API_KEY
+          : embeddingProvider === "lmstudio"
+            ? process.env.LMSTUDIO_API_KEY
+            : undefined),
   });
 
   return _config;

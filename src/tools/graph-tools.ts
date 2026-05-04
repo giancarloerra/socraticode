@@ -3,7 +3,7 @@
 import path from "node:path";
 import { projectIdFromPath } from "../config.js";
 import { mergeExtraExtensions } from "../constants.js";
-import { awaitGraphBuild, findCircularDependencies, generateMermaidDiagram, getFileDependencies, getGraphBuildProgress, getGraphStats, getGraphStatus, getLastGraphBuildCompleted, getOrBuildGraph, isGraphBuildInProgress, rebuildGraph, removeGraph } from "../services/code-graph.js";
+import { awaitGraphBuild, ensureDynamicLanguages, findCircularDependencies, generateMermaidDiagram, getDynamicLanguageStatus, getFileDependencies, getGraphBuildProgress, getGraphStats, getGraphStatus, getLastGraphBuildCompleted, getOrBuildGraph, isGraphBuildInProgress, rebuildGraph, removeGraph } from "../services/code-graph.js";
 import { detectEntryPoints } from "../services/graph-entrypoints.js";
 import {
   type FlowNode,
@@ -234,6 +234,30 @@ export async function handleGraphTool(
     case "codebase_graph_status": {
       const resolved = path.resolve(projectPath);
 
+      // Trigger grammar registration so the diagnostic block below reflects
+      // the real loader state. Idempotent and cheap after the first call.
+      ensureDynamicLanguages();
+      const grammarStatus = getDynamicLanguageStatus();
+      const renderGrammarBlock = (): string[] => {
+        if (grammarStatus.loaded.length === 0 && grammarStatus.failed.length === 0) {
+          return [];
+        }
+        const block: string[] = ["", "AST grammars:"];
+        if (grammarStatus.loaded.length > 0) {
+          block.push(`  Loaded (${grammarStatus.loaded.length}): ${grammarStatus.loaded.join(", ")}`);
+        }
+        if (grammarStatus.failed.length > 0) {
+          block.push(`  Failed (${grammarStatus.failed.length}):`);
+          for (const f of grammarStatus.failed) {
+            block.push(`    - ${f.name}: ${f.error}`);
+          }
+          block.push(
+            "  Symbols and imports for failed languages will be empty until the underlying load error is resolved.",
+          );
+        }
+        return block;
+      };
+
       // Show in-flight build progress if building
       if (isGraphBuildInProgress(resolved)) {
         const progress = getGraphBuildProgress(resolved);
@@ -243,17 +267,19 @@ export async function handleGraphTool(
           ? Math.round((progress.filesProcessed / progress.filesTotal) * 100)
           : 0;
 
-        return [
+        const buildingLines = [
           `Code Graph Status for: ${resolved}`,
           "",
           `Status: BUILDING`,
           `Phase: ${progress.phase}`,
           `Progress: ${progress.filesProcessed}/${progress.filesTotal} files (${pct}%)`,
           `Elapsed: ${elapsed}s`,
+          ...renderGrammarBlock(),
           "",
           "The graph is being built in the background.",
           "Call codebase_graph_status again to check progress.",
-        ].join("\n");
+        ];
+        return buildingLines.join("\n");
       }
 
       // Show last completed build info if available
@@ -266,6 +292,7 @@ export async function handleGraphTool(
           lines.push(`Last build failed: ${lastBuild.error}`);
         }
         lines.push("Run codebase_graph_build or codebase_index to create one.");
+        lines.push(...renderGrammarBlock());
         return lines.join("\n");
       }
 
@@ -293,6 +320,8 @@ export async function handleGraphTool(
         lines.push(`  Call edges: ${sm.edgeCount}`);
         lines.push(`  Unresolved: ${sm.unresolvedEdgePct.toFixed(1)}%`);
       }
+
+      lines.push(...renderGrammarBlock());
 
       return lines.join("\n");
     }

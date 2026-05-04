@@ -445,13 +445,38 @@ export async function getGraphStatus(projectPath: string): Promise<{
 // ── Register dynamic language grammars ───────────────────────────────────
 
 let dynamicLangsRegistered = false;
+const loadedDynamicLanguages = new Set<string>();
+const failedDynamicLanguages = new Map<string, string>();
+
+/** Module export shape exposed by `@ast-grep/lang-*` packages. */
+interface AstGrepLangModule {
+  libraryPath: string;
+  extensions: string[];
+  languageSymbol?: string;
+}
+
+/** Snapshot of dynamic-language registration state, for diagnostics. */
+export interface DynamicLanguageStatus {
+  loaded: string[];
+  failed: Array<{ name: string; error: string }>;
+}
+
+/** Returns which dynamic ast-grep grammars registered successfully and which failed. */
+export function getDynamicLanguageStatus(): DynamicLanguageStatus {
+  return {
+    loaded: [...loadedDynamicLanguages].sort(),
+    failed: [...failedDynamicLanguages.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, error]) => ({ name, error })),
+  };
+}
 
 export function ensureDynamicLanguages(): void {
   if (dynamicLangsRegistered) return;
   dynamicLangsRegistered = true;
 
   try {
-    const langModules: Record<string, { libraryPath: string; extensions: string[]; languageSymbol?: string }> = {};
+    const survivors: Record<string, AstGrepLangModule> = {};
 
     const langPackages: Array<[string, string]> = [
       ["python",  "@ast-grep/lang-python"],
@@ -471,21 +496,45 @@ export function ensureDynamicLanguages(): void {
 
     for (const [name, pkg] of langPackages) {
       try {
-        langModules[name] = esmRequire(pkg);
-      } catch {
-        // Language grammar not installed — skip silently
-        logger.debug(`ast-grep language not available: ${name}`);
+        const mod = esmRequire(pkg) as AstGrepLangModule;
+        // Pre-validate the lazy `libraryPath` getter. `registerDynamicLanguage`
+        // accesses this property for every entry it receives, and a single
+        // throwing getter aborts the entire batch atomically (issue #43).
+        // Touching the getter here, inside the per-grammar try/catch, isolates
+        // a missing-prebuild failure to that one grammar so the rest can still
+        // be registered. The getter caches its result inside the package, so
+        // this is not duplicated work.
+        void mod.libraryPath;
+        survivors[name] = mod;
+        loadedDynamicLanguages.add(name);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        failedDynamicLanguages.set(name, message);
+        logger.warn("ast-grep grammar failed to load", { name, error: message });
       }
     }
 
-    if (Object.keys(langModules).length > 0) {
-      registerDynamicLanguage(langModules);
+    if (Object.keys(survivors).length > 0) {
+      registerDynamicLanguage(survivors);
       logger.info("Registered dynamic ast-grep languages", {
-        languages: Object.keys(langModules),
+        languages: [...loadedDynamicLanguages].sort(),
       });
+    } else {
+      logger.warn(
+        "No dynamic ast-grep grammars loaded; PHP, Python, JVM and other dynamic languages will fall through to <module>-only extraction",
+      );
+    }
+    if (failedDynamicLanguages.size > 0) {
+      logger.warn(
+        "Some dynamic ast-grep grammars failed to load; affected languages will produce only <module>-level symbols",
+        { failed: [...failedDynamicLanguages.keys()].sort() },
+      );
     }
   } catch (err) {
-    logger.warn("Failed to register dynamic ast-grep languages", { error: String(err) });
+    // Should be unreachable now that each grammar is validated independently,
+    // but keep the outer guard so an unexpected throw cannot take the indexer
+    // process down.
+    logger.warn("Unexpected error in ensureDynamicLanguages", { error: String(err) });
   }
 }
 

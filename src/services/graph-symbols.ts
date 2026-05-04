@@ -52,6 +52,22 @@ interface ScopeFrame {
   symbolId: string;
 }
 
+/**
+ * Per-language dedupe set for symbol-extraction failures. Without this, a
+ * missing PHP grammar would emit one warn per file (potentially hundreds).
+ * We log the first failure per language at warn level (with the underlying
+ * error attached) and silently skip subsequent failures.
+ */
+const symbolExtractionWarned = new Set<string>();
+
+/**
+ * Reset the per-language dedupe set. Intended for tests that want to assert
+ * deterministically on extraction warnings.
+ */
+export function resetSymbolExtractionWarnings(): void {
+  symbolExtractionWarned.clear();
+}
+
 /** Find the deepest scope frame covering a line. */
 function findCallerId(scopes: ScopeFrame[], line: number, fallback: string): string {
   let best: ScopeFrame | null = null;
@@ -129,11 +145,17 @@ export function extractSymbolsAndCalls(
     // Dart, Lua, Svelte, Vue and others fall through to the regex fallback.
     return extractFromRegex(source, relativePath, language, moduleSymbol);
   } catch (err) {
-    logger.debug("extractSymbolsAndCalls failed", {
-      file: relativePath,
-      lang: langKey,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    if (!symbolExtractionWarned.has(langKey)) {
+      symbolExtractionWarned.add(langKey);
+      logger.warn(
+        "Symbol extraction failed for language; subsequent failures will be suppressed for this language",
+        {
+          lang: langKey,
+          file: relativePath,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+    }
     return { symbols: [moduleSymbol], rawCalls: [] };
   }
 }

@@ -11,6 +11,22 @@ export interface ImportInfo {
   isCssImport?: boolean;   // True when extracted from a CSS/style context
 }
 
+/**
+ * Per-language dedupe set for import-extraction failures. Without this, a
+ * missing PHP grammar would emit one warn per file (potentially hundreds).
+ * We log the first failure per language at warn level (with the underlying
+ * error attached) and silently skip subsequent failures.
+ */
+const importExtractionWarned = new Set<string>();
+
+/**
+ * Reset the per-language dedupe set. Intended for tests that want to assert
+ * deterministically on extraction warnings.
+ */
+export function resetImportExtractionWarnings(): void {
+  importExtractionWarned.clear();
+}
+
 /** Extract CSS/SCSS/Stylus @import statements from raw style source text. */
 function extractCssImports(source: string): ImportInfo[] {
   const imports: ImportInfo[] = [];
@@ -349,7 +365,17 @@ export function extractImports(source: string, lang: Lang | string, _ext: string
         break;
     }
   } catch (err) {
-    logger.warn("Failed to parse file for imports", { lang: String(lang), error: String(err) });
+    const langKey = String(lang);
+    if (!importExtractionWarned.has(langKey)) {
+      importExtractionWarned.add(langKey);
+      logger.warn(
+        "Failed to parse file for imports; subsequent failures will be suppressed for this language",
+        {
+          lang: langKey,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+    }
   }
 
   return imports;

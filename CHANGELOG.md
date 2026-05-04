@@ -4,6 +4,12 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.8.3](https://github.com/giancarloerra/socraticode/compare/v1.8.2...v1.8.3) (2026-05-04)
+
+### Features
+
+* **embeddings:** add LM Studio as a first-class embedding provider ([#42](https://github.com/giancarloerra/socraticode/issues/42)) ([332ee80](https://github.com/giancarloerra/socraticode/commit/332ee800a85fd35ded4e37adabecbfdd6221d31b))
+
 ## [1.8.2](https://github.com/giancarloerra/socraticode/compare/v1.8.1...v1.8.2) (2026-05-04)
 
 ### Bug Fixes

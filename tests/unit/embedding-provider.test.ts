@@ -19,6 +19,8 @@ describe("embedding-provider", () => {
     delete process.env.OLLAMA_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.GOOGLE_API_KEY;
+    delete process.env.LMSTUDIO_URL;
+    delete process.env.LMSTUDIO_API_KEY;
   });
 
   afterEach(() => {
@@ -43,6 +45,14 @@ describe("embedding-provider", () => {
       process.env.EMBEDDING_PROVIDER = "google";
       const provider = await getEmbeddingProvider();
       expect(provider.name).toBe("google");
+    });
+
+    it("creates LMStudioEmbeddingProvider when configured", async () => {
+      process.env.EMBEDDING_PROVIDER = "lmstudio";
+      process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+      process.env.EMBEDDING_DIMENSIONS = "768";
+      const provider = await getEmbeddingProvider();
+      expect(provider.name).toBe("lmstudio");
     });
 
     it("caches provider instance", async () => {
@@ -131,5 +141,63 @@ describe("GoogleEmbeddingProvider", () => {
     expect(health.available).toBe(false);
     expect(health.modelReady).toBe(false);
     expect(health.statusLines.some((l) => l.includes("Missing"))).toBe(true);
+  });
+});
+
+describe("LMStudioEmbeddingProvider", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    resetEmbeddingConfig();
+    resetEmbeddingProvider();
+    delete process.env.EMBEDDING_PROVIDER;
+    delete process.env.EMBEDDING_MODEL;
+    delete process.env.EMBEDDING_DIMENSIONS;
+    delete process.env.EMBEDDING_CONTEXT_LENGTH;
+    delete process.env.LMSTUDIO_URL;
+    delete process.env.LMSTUDIO_API_KEY;
+  });
+
+  afterEach(() => {
+    resetEmbeddingConfig();
+    resetEmbeddingProvider();
+    process.env = { ...originalEnv };
+  });
+
+  it("ensureReady throws an actionable error when LM Studio is unreachable", async () => {
+    process.env.EMBEDDING_PROVIDER = "lmstudio";
+    process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+    process.env.EMBEDDING_DIMENSIONS = "768";
+    // Point at a deliberately closed port so the request fails fast.
+    process.env.LMSTUDIO_URL = "http://127.0.0.1:1/v1";
+
+    const provider = await getEmbeddingProvider();
+    await expect(provider.ensureReady()).rejects.toThrow(
+      /LM Studio is not reachable at http:\/\/127\.0\.0\.1:1\/v1/,
+    );
+  });
+
+  it("healthCheck reports unreachable LM Studio without throwing", async () => {
+    process.env.EMBEDDING_PROVIDER = "lmstudio";
+    process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+    process.env.EMBEDDING_DIMENSIONS = "768";
+    process.env.LMSTUDIO_URL = "http://127.0.0.1:1/v1";
+
+    const provider = await getEmbeddingProvider();
+    const health = await provider.healthCheck();
+
+    expect(health.available).toBe(false);
+    expect(health.modelReady).toBe(false);
+    expect(health.statusLines.some((l) => l.includes("LM Studio") && l.includes("Not reachable"))).toBe(true);
+  });
+
+  it("does not require LMSTUDIO_API_KEY to construct the provider", async () => {
+    process.env.EMBEDDING_PROVIDER = "lmstudio";
+    process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+    process.env.EMBEDDING_DIMENSIONS = "768";
+    // Intentionally no LMSTUDIO_API_KEY.
+
+    const provider = await getEmbeddingProvider();
+    expect(provider.name).toBe("lmstudio");
   });
 });

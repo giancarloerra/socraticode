@@ -22,6 +22,8 @@ describe("embedding-config", () => {
     delete process.env.OLLAMA_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.GOOGLE_API_KEY;
+    delete process.env.LMSTUDIO_URL;
+    delete process.env.LMSTUDIO_API_KEY;
   });
 
   afterEach(() => {
@@ -178,6 +180,7 @@ describe("embedding-config", () => {
         embeddingProvider: "ollama",
         ollamaMode: "external",
         ollamaUrl: "http://remote-gpu:11434",
+        lmstudioUrl: "http://localhost:1234/v1",
         embeddingModel: "mxbai-embed-large",
         embeddingDimensions: 1024,
         embeddingContextLength: 512,
@@ -215,7 +218,7 @@ describe("embedding-config", () => {
     it("throws for invalid EMBEDDING_PROVIDER", () => {
       process.env.EMBEDDING_PROVIDER = "anthropic";
       expect(() => loadEmbeddingConfig()).toThrow(
-        'Invalid EMBEDDING_PROVIDER: "anthropic". Must be "ollama", "openai", or "google".',
+        'Invalid EMBEDDING_PROVIDER: "anthropic". Must be "ollama", "openai", "google", or "lmstudio".',
       );
     });
 
@@ -246,6 +249,84 @@ describe("embedding-config", () => {
       process.env.EMBEDDING_CONTEXT_LENGTH = "4096";
       const config = loadEmbeddingConfig();
       expect(config.embeddingContextLength).toBe(4096);
+    });
+  });
+
+  describe("lmstudio provider", () => {
+    it("loads when EMBEDDING_MODEL and EMBEDDING_DIMENSIONS are set", () => {
+      process.env.EMBEDDING_PROVIDER = "lmstudio";
+      process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+      process.env.EMBEDDING_DIMENSIONS = "768";
+
+      const config = loadEmbeddingConfig();
+      expect(config.embeddingProvider).toBe("lmstudio");
+      expect(config.embeddingModel).toBe("nomic-embed-text-v1.5");
+      expect(config.embeddingDimensions).toBe(768);
+    });
+
+    it("defaults LMSTUDIO_URL to http://localhost:1234/v1", () => {
+      process.env.EMBEDDING_PROVIDER = "lmstudio";
+      process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+      process.env.EMBEDDING_DIMENSIONS = "768";
+
+      const config = loadEmbeddingConfig();
+      expect(config.lmstudioUrl).toBe("http://localhost:1234/v1");
+    });
+
+    it("respects LMSTUDIO_URL override", () => {
+      process.env.EMBEDDING_PROVIDER = "lmstudio";
+      process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+      process.env.EMBEDDING_DIMENSIONS = "768";
+      process.env.LMSTUDIO_URL = "http://gpu-rig.local:5678/v1";
+
+      const config = loadEmbeddingConfig();
+      expect(config.lmstudioUrl).toBe("http://gpu-rig.local:5678/v1");
+    });
+
+    it("throws when EMBEDDING_MODEL is missing", () => {
+      process.env.EMBEDDING_PROVIDER = "lmstudio";
+      process.env.EMBEDDING_DIMENSIONS = "768";
+
+      expect(() => loadEmbeddingConfig()).toThrow(
+        /EMBEDDING_MODEL is required when EMBEDDING_PROVIDER=lmstudio/,
+      );
+    });
+
+    it("throws when EMBEDDING_DIMENSIONS is missing", () => {
+      process.env.EMBEDDING_PROVIDER = "lmstudio";
+      process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+
+      expect(() => loadEmbeddingConfig()).toThrow(
+        /EMBEDDING_DIMENSIONS is required when EMBEDDING_PROVIDER=lmstudio/,
+      );
+    });
+
+    it("includes example dimensions in the error message for discoverability", () => {
+      process.env.EMBEDDING_PROVIDER = "lmstudio";
+      process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+
+      expect(() => loadEmbeddingConfig()).toThrow(
+        /768 for nomic-embed-text-v1\.5/,
+      );
+    });
+
+    it("does not require LMSTUDIO_API_KEY", () => {
+      process.env.EMBEDDING_PROVIDER = "lmstudio";
+      process.env.EMBEDDING_MODEL = "nomic-embed-text-v1.5";
+      process.env.EMBEDDING_DIMENSIONS = "768";
+      // Intentionally no LMSTUDIO_API_KEY — LM Studio's Local Server has no auth by default.
+
+      expect(() => loadEmbeddingConfig()).not.toThrow();
+    });
+
+    it("respects EMBEDDING_CONTEXT_LENGTH override", () => {
+      process.env.EMBEDDING_PROVIDER = "lmstudio";
+      process.env.EMBEDDING_MODEL = "qwen3-embedding-8b";
+      process.env.EMBEDDING_DIMENSIONS = "4096";
+      process.env.EMBEDDING_CONTEXT_LENGTH = "32768";
+
+      const config = loadEmbeddingConfig();
+      expect(config.embeddingContextLength).toBe(32768);
     });
   });
 });

@@ -685,6 +685,36 @@ Use Google's Gemini embedding API. Requires an [API key](https://aistudio.google
 
 > Defaults: `EMBEDDING_MODEL=gemini-embedding-001`, `EMBEDDING_DIMENSIONS=3072`.
 
+#### LM Studio (local, OpenAI-compatible)
+
+[LM Studio](https://lmstudio.ai/) ships with a Local Server that exposes an OpenAI-compatible
+API on `http://localhost:1234/v1`. Use this provider when you want to host embedding models
+in LM Studio (e.g. when LM Studio is your single source for both chat and embedding models,
+or when you want a Mac/Windows-friendly desktop UI for managing GGUF models).
+
+```json
+{
+  "mcpServers": {
+    "socraticode": {
+      "command": "node",
+      "args": ["/absolute/path/to/socraticode/dist/index.js"],
+      "env": {
+        "EMBEDDING_PROVIDER": "lmstudio",
+        "EMBEDDING_MODEL": "nomic-embed-text-v1.5",
+        "EMBEDDING_DIMENSIONS": "768"
+      }
+    }
+  }
+}
+```
+
+> **No defaults — `EMBEDDING_MODEL` and `EMBEDDING_DIMENSIONS` are required.** LM Studio has
+> no out-of-the-box embedding model; you load one yourself in the Local Server tab. SocratiCode
+> fails fast if either is missing.
+>
+> Optional: `LMSTUDIO_URL` (default `http://localhost:1234/v1`) for non-default ports;
+> `LMSTUDIO_API_KEY` if you've enabled API key auth in LM Studio.
+
 ### Git Worktrees (shared index across directories)
 
 If you use [git worktrees](https://git-scm.com/docs/git-worktree) — or any workflow where the same repository lives in multiple directories — each path would normally get its own Qdrant index. This means redundant embedding and storage for what is essentially the same codebase.
@@ -1072,10 +1102,10 @@ The rest of this section documents the variables themselves. Pass them using whi
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EMBEDDING_PROVIDER` | `ollama` | Embedding backend: `ollama` (local, default), `openai`, or `google` |
-| `EMBEDDING_MODEL` | *(per provider)* | Model name. Defaults: `nomic-embed-text` (ollama), `text-embedding-3-small` (openai), `gemini-embedding-001` (google) |
-| `EMBEDDING_DIMENSIONS` | *(per provider)* | Vector dimensions. Defaults: `768` (ollama), `1536` (openai), `3072` (google) |
-| `EMBEDDING_CONTEXT_LENGTH` | *(auto-detected)* | Model context window in tokens. Auto-detected for known models. Set manually for custom models. |
+| `EMBEDDING_PROVIDER` | `ollama` | Embedding backend: `ollama` (local, default), `openai`, `google`, or `lmstudio` |
+| `EMBEDDING_MODEL` | *(per provider)* | Model name. Defaults: `nomic-embed-text` (ollama), `text-embedding-3-small` (openai), `gemini-embedding-001` (google). **Required** for `lmstudio` (no default). |
+| `EMBEDDING_DIMENSIONS` | *(per provider)* | Vector dimensions. Defaults: `768` (ollama), `1536` (openai), `3072` (google). **Required** for `lmstudio` (no default; varies per loaded model). |
+| `EMBEDDING_CONTEXT_LENGTH` | *(auto-detected)* | Model context window in tokens. Auto-detected for known models. Set manually for custom or LM Studio models. |
 
 ### Ollama Configuration (when `EMBEDDING_PROVIDER=ollama`)
 
@@ -1093,6 +1123,13 @@ The rest of this section documents the variables themselves. Pass them using whi
 |----------|---------|-------------|
 | `OPENAI_API_KEY` | *(none)* | Required when `EMBEDDING_PROVIDER=openai`. Get from [platform.openai.com](https://platform.openai.com/api-keys) |
 | `GOOGLE_API_KEY` | *(none)* | Required when `EMBEDDING_PROVIDER=google`. Get from [aistudio.google.com](https://aistudio.google.com/apikey) |
+
+### LM Studio Configuration (when `EMBEDDING_PROVIDER=lmstudio`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LMSTUDIO_URL` | `http://localhost:1234/v1` | Full base URL of LM Studio's OpenAI-compatible Local Server. Override when the server runs on a non-default port or a remote machine (e.g. `http://gpu-rig.local:5678/v1`). Must include the `/v1` suffix. |
+| `LMSTUDIO_API_KEY` | *(none)* | Optional. LM Studio's Local Server has no auth by default; set this only if you've enabled API key auth in the LM Studio UI. |
 
 ### Qdrant Configuration
 

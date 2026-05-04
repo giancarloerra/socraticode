@@ -222,7 +222,9 @@ export function loadEmbeddingConfig(): EmbeddingConfig {
         ? process.env.OPENAI_API_KEY
         : embeddingProvider === "google"
           ? process.env.GOOGLE_API_KEY
-          : process.env.LMSTUDIO_API_KEY),
+          : embeddingProvider === "lmstudio"
+            ? process.env.LMSTUDIO_API_KEY
+            : undefined),
   });
 
   return _config;

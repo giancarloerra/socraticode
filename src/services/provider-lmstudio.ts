@@ -91,23 +91,43 @@ export class LMStudioEmbeddingProvider implements EmbeddingProvider {
 
   async ensureReady(): Promise<EmbeddingReadinessResult> {
     const config = getEmbeddingConfig();
+    const client = getClient();
+
+    // Step 1 — connectivity. The Local Server might be off, the port might be wrong,
+    // or LM Studio itself might not be running. Surface those as a single actionable
+    // message before checking model load state.
+    let modelList: Awaited<ReturnType<typeof client.models.list>>;
     try {
-      const client = getClient();
-      await client.models.list();
-      logger.info("LM Studio embedding provider ready", {
-        baseUrl: config.lmstudioUrl,
-        model: config.embeddingModel,
-      });
+      modelList = await client.models.list();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(
         `LM Studio is not reachable at ${config.lmstudioUrl}. ` +
-        "Make sure LM Studio is running, an embedding model is loaded, and the Local Server " +
-        "is started (Local Server tab > Start Server). " +
+        "Make sure LM Studio is running and the Local Server is started " +
+        "(Local Server tab > Start Server). " +
         "If you've changed the port, set LMSTUDIO_URL accordingly (e.g. http://localhost:5678/v1). " +
         `Underlying error: ${message}`,
       );
     }
+
+    // Step 2 — model loaded. LM Studio's /v1/models lists the currently-loaded
+    // models; if the configured EMBEDDING_MODEL isn't there, every embed() call
+    // will fail server-side with an opaque error. Fail early with a distinct,
+    // actionable message instead.
+    const modelLoaded = modelList.data.some((m) => m.id === config.embeddingModel);
+    if (!modelLoaded) {
+      throw new Error(
+        `LM Studio is reachable at ${config.lmstudioUrl} but the embedding model ` +
+        `"${config.embeddingModel}" is not loaded. Open LM Studio's Local Server tab, ` +
+        "load the model, and select it as the active embedding model — then retry. " +
+        "(Use EMBEDDING_MODEL to match the exact model identifier shown in LM Studio.)",
+      );
+    }
+
+    logger.info("LM Studio embedding provider ready", {
+      baseUrl: config.lmstudioUrl,
+      model: config.embeddingModel,
+    });
     // LM Studio is user-managed — no containers, no model pulls.
     return { modelPulled: false, containerStarted: false, imagePulled: false };
   }

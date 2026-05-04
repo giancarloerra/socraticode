@@ -8,8 +8,8 @@
 Same understanding of your code, every assistant, every tool switch.</p>
 
 <p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=giancarloerra.socraticode"><img src="https://img.shields.io/visual-studio-marketplace/v/giancarloerra.socraticode?style=flat-square&logo=visualstudiocode&logoColor=white&label=VS%20Code%20Marketplace" alt="VS Code Marketplace"></a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=giancarloerra.socraticode"><img src="https://img.shields.io/visual-studio-marketplace/i/giancarloerra.socraticode?style=flat-square&label=installs" alt="Installs"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=giancarloerra.socraticode"><img src="https://vsmarketplacebadges.dev/version-short/giancarloerra.socraticode.svg?style=flat-square&label=VS%20Code%20Marketplace&logo=visualstudiocode&color=0098FF" alt="VS Code Marketplace"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=giancarloerra.socraticode"><img src="https://vsmarketplacebadges.dev/installs-short/giancarloerra.socraticode.svg?style=flat-square&label=installs" alt="Installs"></a>
   <a href="https://open-vsx.org/extension/giancarloerra/socraticode"><img src="https://img.shields.io/open-vsx/v/giancarloerra/socraticode?style=flat-square&label=Open%20VSX" alt="Open VSX"></a>
   <a href="https://open-vsx.org/extension/giancarloerra/socraticode"><img src="https://img.shields.io/open-vsx/dt/giancarloerra/socraticode?style=flat-square&label=downloads" alt="Open VSX Downloads"></a>
   <a href="https://github.com/giancarloerra/socraticode"><img src="https://img.shields.io/github/stars/giancarloerra/socraticode?style=flat-square&logo=github&label=stars" alt="GitHub stars"></a>

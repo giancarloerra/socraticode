@@ -173,6 +173,9 @@ class SecurityAuthClientRequireSubjectTest {
 
     @Test
     void requireSubjectThrows() {}
+
+    @Test(timeout = 1000)
+    void fastTest() {}
 }
 `;
       const out = extractSymbolsAndCalls(src, "java" as unknown as Lang, ".java", "SecurityAuthClientRequireSubjectTest.java");
@@ -180,6 +183,7 @@ class SecurityAuthClientRequireSubjectTest {
       expect(names).toContain("SecurityAuthClientRequireSubjectTest");
       expect(names).toContain("cleanup");
       expect(names).toContain("requireSubjectThrows");
+      expect(names).toContain("fastTest");
       expect(names).not.toContain("AfterEach");
       expect(names).not.toContain("Test");
     });

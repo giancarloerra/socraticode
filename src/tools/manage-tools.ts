@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giancarlo Erra - Altaire Limited
 
-import { QDRANT_HOST, QDRANT_MODE, QDRANT_PORT, QDRANT_URL, SOCRATICODE_VERSION } from "../constants.js";
+import { QDRANT_COLLECTION_PREFIX, QDRANT_HOST, QDRANT_MODE, QDRANT_PORT, QDRANT_URL, SOCRATICODE_VERSION } from "../constants.js";
 import { getArtifactStatusSummary } from "../services/context-artifacts.js";
 import { isDockerAvailable, isQdrantImagePresent, isQdrantRunning } from "../services/docker.js";
 import { getEmbeddingConfig } from "../services/embedding-config.js";
@@ -136,14 +136,20 @@ export async function handleManageTool(
           return "No projects have been indexed yet. Use codebase_index to index a project.";
         }
 
-        const codebaseCollections = collections.filter((c) => c.startsWith("codebase_"));
-        const graphCollections = collections.filter((c) => c.startsWith("codegraph_"));
+        // All four references below honour QDRANT_COLLECTION_PREFIX so this
+        // tool keeps working on shared Qdrant deployments where SocratiCode's
+        // collection names carry an instance-specific prefix.
+        const p = QDRANT_COLLECTION_PREFIX;
+        const codebasePrefix = `${p}codebase_`;
+        const graphPrefix = `${p}codegraph_`;
+        const codebaseCollections = collections.filter((c) => c.startsWith(codebasePrefix));
+        const graphCollections = collections.filter((c) => c.startsWith(graphPrefix));
 
         const lines = ["Indexed projects:\n"];
 
         for (const c of codebaseCollections) {
-          const projectId = c.replace("codebase_", "");
-          const hasGraph = graphCollections.includes(`codegraph_${projectId}`);
+          const projectId = c.slice(codebasePrefix.length);
+          const hasGraph = graphCollections.includes(`${graphPrefix}${projectId}`);
           const metadata = await getProjectMetadata(c);
           const pathInfo = metadata?.projectPath || "(path unknown — indexed before path tracking)";
           lines.push(`  - ${pathInfo}`);
@@ -159,7 +165,7 @@ export async function handleManageTool(
             }
           }
           if (hasGraph) {
-            const graphMeta = await getGraphMetadata(`codegraph_${projectId}`);
+            const graphMeta = await getGraphMetadata(`${graphPrefix}${projectId}`);
             if (graphMeta) {
               lines.push(`    Code graph: ${graphMeta.nodeCount} files, ${graphMeta.edgeCount} edges (built: ${graphMeta.lastBuiltAt})`);
             } else {

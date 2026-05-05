@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { QDRANT_COLLECTION_PREFIX } from "./constants.js";
 
 // ── Branch detection ─────────────────────────────────────────────────────
 
@@ -89,40 +90,47 @@ function coreProjectId(folderPath: string): string {
 
 /**
  * Derive a Qdrant collection name for a project's code chunks.
+ *
+ * The optional `QDRANT_COLLECTION_PREFIX` env var is prepended verbatim to
+ * isolate this SocratiCode instance's collections when sharing a Qdrant
+ * server with other applications or other SocratiCode instances. Empty
+ * prefix (the default) preserves the legacy `codebase_<id>` form exactly.
  */
 export function collectionName(projectId: string): string {
-  return `codebase_${projectId}`;
+  return `${QDRANT_COLLECTION_PREFIX}codebase_${projectId}`;
 }
 
 /**
  * Derive a Qdrant collection name for a project's code graph.
+ * See {@link collectionName} for the prefix semantics.
  */
 export function graphCollectionName(projectId: string): string {
-  return `codegraph_${projectId}`;
+  return `${QDRANT_COLLECTION_PREFIX}codegraph_${projectId}`;
 }
 
 /**
  * Derive a Qdrant collection name for a project's context artifacts.
+ * See {@link collectionName} for the prefix semantics.
  */
 export function contextCollectionName(projectId: string): string {
-  return `context_${projectId}`;
+  return `${QDRANT_COLLECTION_PREFIX}context_${projectId}`;
 }
 
 // ── Symbol graph collections ─────────────────────────────────────────────
 
 /** Top-level metadata point for a project's symbol graph. */
 export function symgraphMetaCollectionName(projectId: string): string {
-  return `${projectId}_symgraph_meta`;
+  return `${QDRANT_COLLECTION_PREFIX}${projectId}_symgraph_meta`;
 }
 
 /** Per-file payloads for a project's symbol graph. */
 export function symgraphFileCollectionName(projectId: string): string {
-  return `${projectId}_symgraph_file`;
+  return `${QDRANT_COLLECTION_PREFIX}${projectId}_symgraph_file`;
 }
 
 /** Sharded indices (name index + reverse-call file index). */
 export function symgraphIndexCollectionName(projectId: string): string {
-  return `${projectId}_symgraph_index`;
+  return `${QDRANT_COLLECTION_PREFIX}${projectId}_symgraph_index`;
 }
 
 // ── Linked projects ──────────────────────────────────────────────────────

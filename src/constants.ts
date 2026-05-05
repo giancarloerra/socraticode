@@ -31,6 +31,32 @@ export const QDRANT_CONTAINER_NAME = "socraticode-qdrant";
 export const QDRANT_IMAGE = "qdrant/qdrant:v1.17.0";
 
 /**
+ * Optional prefix prepended to every Qdrant collection name SocratiCode
+ * creates, queries or deletes. Useful when sharing one Qdrant instance with
+ * other applications (Open-WebUI, custom RAG tools, etc.) or when running
+ * multiple SocratiCode instances against one Qdrant for separation between
+ * projects, environments, or per-user indexes.
+ *
+ * Default is the empty string, which keeps every collection name unchanged
+ * from previous releases — fully backwards compatible.
+ *
+ * Validated at module load: Qdrant accepts only `[a-zA-Z0-9_-]` in
+ * collection names, so the prefix must too. An invalid prefix throws
+ * before any Qdrant call is made, with a message naming the offending
+ * value so the misconfiguration is obvious.
+ */
+export const QDRANT_COLLECTION_PREFIX = (() => {
+  const raw = process.env.QDRANT_COLLECTION_PREFIX || "";
+  if (raw && !/^[a-zA-Z0-9_-]+$/.test(raw)) {
+    throw new Error(
+      `Invalid QDRANT_COLLECTION_PREFIX: "${raw}". Qdrant collection names ` +
+      "accept only alphanumeric characters, underscore, and hyphen.",
+    );
+  }
+  return raw;
+})();
+
+/**
  * Resolve the Qdrant REST port from a URL.
  * Returns the explicit port if present (e.g. `:8443`),
  * otherwise `443` for `https://` or `6333` for `http://`.

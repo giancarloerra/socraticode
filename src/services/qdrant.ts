@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Giancarlo Erra - Altaire Limited
 import { createHash } from "node:crypto";
 import { QdrantClient } from "@qdrant/js-client-rest";
-import { QDRANT_API_KEY, QDRANT_HOST, QDRANT_PORT, QDRANT_URL, resolveQdrantPort } from "../constants.js";
+import { QDRANT_API_KEY, QDRANT_COLLECTION_PREFIX, QDRANT_HOST, QDRANT_PORT, QDRANT_URL, resolveQdrantPort } from "../constants.js";
 import type { ArtifactIndexState, CodeGraph, FileChunk, SearchResult } from "../types.js";
 import { getEmbeddingConfig } from "./embedding-config.js";
 import { generateEmbeddings, generateQueryEmbedding, prepareDocumentText } from "./embeddings.js";
@@ -134,13 +134,23 @@ export async function deleteCollection(name: string): Promise<void> {
 }
 
 /** List all codebase, codegraph, and context artifact entries.
- * Codebase and context entries are actual collections; codegraph entries come from metadata. */
+ * Codebase and context entries are actual collections; codegraph entries come from metadata.
+ *
+ * The collection-name filters honour `QDRANT_COLLECTION_PREFIX` so when
+ * sharing a Qdrant server with other applications or other SocratiCode
+ * instances, only this instance's collections are listed. */
 export async function listCodebaseCollections(): Promise<string[]> {
   const qdrant = getClient();
   const collections = await qdrant.getCollections();
+  const p = QDRANT_COLLECTION_PREFIX;
   const result = collections.collections
     .map((c) => c.name)
-    .filter((n) => n.startsWith("codebase_") || n.startsWith("codegraph_") || n.startsWith("context_"));
+    .filter(
+      (n) =>
+        n.startsWith(`${p}codebase_`) ||
+        n.startsWith(`${p}codegraph_`) ||
+        n.startsWith(`${p}context_`),
+    );
 
   // Also check metadata for graph and context entries (stored as metadata points, not real collections)
   try {
@@ -152,7 +162,7 @@ export async function listCodebaseCollections(): Promise<string[]> {
     for (const point of metaPoints.points) {
       const collName = point.payload?.collectionName as string | undefined;
       if (
-        (collName?.startsWith("codegraph_") || collName?.startsWith("context_")) &&
+        (collName?.startsWith(`${p}codegraph_`) || collName?.startsWith(`${p}context_`)) &&
         !result.includes(collName)
       ) {
         result.push(collName);
@@ -533,7 +543,14 @@ export async function getCollectionInfo(name: string): Promise<{
 
 // ── Project metadata collection ──────────────────────────────────────────
 
-const METADATA_COLLECTION = "socraticode_metadata";
+/**
+ * Global per-instance metadata collection. Stores cross-project state such
+ * as graph metadata pointers and context-artifact metadata. Honours
+ * `QDRANT_COLLECTION_PREFIX` so two SocratiCode instances sharing one
+ * Qdrant server keep their metadata isolated as well as their per-project
+ * code/graph/context collections.
+ */
+const METADATA_COLLECTION = `${QDRANT_COLLECTION_PREFIX}socraticode_metadata`;
 
 /** Cached flag: once the metadata collection is confirmed to exist, skip re-checking */
 let metadataCollectionReady = false;

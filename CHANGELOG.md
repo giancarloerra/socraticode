@@ -4,6 +4,12 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.8.6](https://github.com/giancarloerra/socraticode/compare/v1.8.5...v1.8.6) (2026-05-05)
+
+### Features
+
+* **qdrant:** add QDRANT_COLLECTION_PREFIX env var for shared instances ([70db002](https://github.com/giancarloerra/socraticode/commit/70db002796a76596badfed86c25d5af6c0331e69))
+
 ## [1.8.5](https://github.com/giancarloerra/socraticode/compare/v1.8.4...v1.8.5) (2026-05-05)
 
 ### Bug Fixes

@@ -215,8 +215,14 @@ export function resolveImport(
   csNamespaceMap?: Map<string, string[]>,
   goModuleInfo?: GoModuleInfo | null,
 ): string | null {
-  // Skip obvious external/stdlib modules
-  if (isExternalModule(moduleSpecifier, language)) return null;
+  // Skip obvious external/stdlib modules. Go is excluded from this
+  // pre-check because its external classifier in `isExternalModule`
+  // treats any `golang.org/...` import as external, which would block
+  // valid local imports for projects whose own module path starts with
+  // `golang.org/` (e.g. someone working on `golang.org/x/sync` itself).
+  // The Go case below performs its own module-path-aware classification
+  // and returns null for everything outside the local module.
+  if (language !== "go" && isExternalModule(moduleSpecifier, language)) return null;
 
   const sourceDir = path.dirname(sourceFile);
 
@@ -293,9 +299,10 @@ export function resolveImport(
       // (built by buildGoModuleInfo at graph-build time). When the import
       // starts with that prefix, strip it to get the package's directory
       // relative to the project root, then look up the representative
-      // file for that directory. Imports outside the module path are
-      // external dependencies (or stdlib already filtered upstream by
-      // isExternalModule) and resolve to null.
+      // file for that directory. Anything else (stdlib like "fmt",
+      // third-party packages like "github.com/x/y", or sibling-module
+      // paths that share a prefix textually but not structurally)
+      // resolves to null.
       if (!goModuleInfo) return null;
       if (!moduleSpecifier.startsWith(goModuleInfo.modulePath)) return null;
       const rest = moduleSpecifier.slice(goModuleInfo.modulePath.length);

@@ -938,6 +938,34 @@ describe("graph-resolution", () => {
       expect(result).toBe("pkg/alpha.go");
     });
 
+    it("resolves local imports when the module path starts with golang.org/", () => {
+      // Real-world case: someone working ON one of the Go-team packages
+      // like golang.org/x/sync. Their go.mod declares
+      // `module golang.org/x/sync` and internal subpackages must resolve
+      // locally, even though isExternalModule treats `golang.org/...`
+      // imports as external for non-local-module projects.
+      project = createTempProject({
+        "go.mod": "module golang.org/x/custom\n\ngo 1.21\n",
+        "main.go": "",
+        "internal/foo.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      const result = resolveImport(
+        "golang.org/x/custom/internal",
+        path.join(project.root, "main.go"),
+        project.root,
+        project.fileSet,
+        "go",
+        undefined,
+        undefined,
+        undefined,
+        goInfo,
+      );
+
+      expect(result).toBe("internal/foo.go");
+    });
+
     it("returns null for a similar-prefix import that is not a subpackage", () => {
       // `example.com/myapp-other/pkg` shares the prefix `example.com/myapp`
       // textually but is a separate module. Must not resolve to anything

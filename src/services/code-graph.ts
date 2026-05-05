@@ -13,7 +13,7 @@ import type {
 } from "../types.js";
 import { loadPathAliases } from "./graph-aliases.js";
 import { extractImports } from "./graph-imports.js";
-import { buildCsNamespaceMap, buildJvmSuffixMap, resolveImport } from "./graph-resolution.js";
+import { buildCsNamespaceMap, buildGoModuleInfo, buildJvmSuffixMap, resolveImport } from "./graph-resolution.js";
 import { computeUnresolvedPct, resolveCallSites } from "./graph-symbol-resolution.js";
 import { extractSymbolsAndCalls, rawCallsToUnresolvedEdges } from "./graph-symbols.js";
 import { createIgnoreFilter, shouldIgnore } from "./ignore.js";
@@ -668,6 +668,14 @@ export async function buildCodeGraph(
   const hasCs = files.some((f) => path.extname(f).toLowerCase() === ".cs");
   const csNamespaceMap = hasCs ? buildCsNamespaceMap(fileSet, resolvedPath) : undefined;
 
+  // Build Go module-resolution info from go.mod (issue #45). Without this,
+  // every Go import resolved to null and Go projects produced an empty
+  // file graph. The info is null when go.mod is missing or unparseable;
+  // the resolver treats null as "no Go resolution available" and behaves
+  // exactly as it did before this PR for those cases.
+  const hasGo = files.some((f) => f.endsWith(".go"));
+  const goModuleInfo = hasGo ? buildGoModuleInfo(fileSet, resolvedPath) : undefined;
+
   for (const relPath of files) {
     const ext = path.extname(relPath).toLowerCase();
     const lang = getAstGrepLang(ext);
@@ -738,7 +746,7 @@ export async function buildCodeGraph(
       // Try to resolve to a project file
       // CSS imports from <style> blocks use CSS resolution even when the source file is Svelte/Vue
       const resolutionLanguage = imp.isCssImport ? "css" : language;
-      const resolved = resolveImport(imp.moduleSpecifier, absolutePath, resolvedPath, fileSet, resolutionLanguage, aliases, jvmSuffixMap, csNamespaceMap);
+      const resolved = resolveImport(imp.moduleSpecifier, absolutePath, resolvedPath, fileSet, resolutionLanguage, aliases, jvmSuffixMap, csNamespaceMap, goModuleInfo);
       if (resolved) {
         node.dependencies.push(resolved);
 

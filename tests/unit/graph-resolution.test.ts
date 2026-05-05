@@ -7,6 +7,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildCsNamespaceMap,
+  buildGoModuleInfo,
   buildJvmSuffixMap,
   resolveImport,
 } from "../../src/services/graph-resolution.js";
@@ -771,7 +772,10 @@ describe("graph-resolution", () => {
   // ── Go resolution ──────────────────────────────────────────────────────
 
   describe("Go resolution", () => {
-    it("returns null (Go requires go.mod analysis)", () => {
+    it("returns null when no goModuleInfo is supplied (no go.mod path active)", () => {
+      // Back-compat: when the resolver is called without Go module info
+      // (e.g. for projects with no go.mod), every Go import resolves to
+      // null. This is the path before issue #45's fix.
       project = createTempProject({
         "main.go": "",
         "internal/helper.go": "",
@@ -786,6 +790,298 @@ describe("graph-resolution", () => {
       );
 
       expect(result).toBeNull();
+    });
+
+    it("resolves a subpackage import to the representative .go file (#45)", () => {
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n\ngo 1.21\n",
+        "main.go": "",
+        "internal/helper.go": "",
+        "internal/util.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+      expect(goInfo).not.toBeNull();
+
+      const result = resolveImport(
+        "example.com/myapp/internal",
+        path.join(project.root, "main.go"),
+        project.root,
+        project.fileSet,
+        "go",
+        undefined,
+        undefined,
+        undefined,
+        goInfo,
+      );
+
+      // helper.go is the lexically smallest non-test .go file in
+      // internal/, so it's picked as the package's representative.
+      expect(result).toBe("internal/helper.go");
+    });
+
+    it("resolves the root-package import to a project-root .go file", () => {
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n\ngo 1.21\n",
+        "main.go": "",
+        "doc.go": "",
+        "internal/helper.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      const result = resolveImport(
+        "example.com/myapp",
+        path.join(project.root, "internal/helper.go"),
+        project.root,
+        project.fileSet,
+        "go",
+        undefined,
+        undefined,
+        undefined,
+        goInfo,
+      );
+
+      expect(result).toBe("doc.go");
+    });
+
+    it("returns null for external imports (not under module path)", () => {
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n\ngo 1.21\n",
+        "main.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      const result = resolveImport(
+        "github.com/spf13/cobra",
+        path.join(project.root, "main.go"),
+        project.root,
+        project.fileSet,
+        "go",
+        undefined,
+        undefined,
+        undefined,
+        goInfo,
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it("returns null when go.mod is missing", () => {
+      project = createTempProject({
+        "main.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      // No go.mod → buildGoModuleInfo returns null → resolver returns null
+      // for any Go import.
+      expect(goInfo).toBeNull();
+    });
+
+    it("returns null when go.mod has no module directive", () => {
+      project = createTempProject({
+        "go.mod": "go 1.21\n",
+        "main.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      expect(goInfo).toBeNull();
+    });
+
+    it("excludes _test.go files from representative selection", () => {
+      // service/foo.go and service/foo_test.go both exist in the same
+      // directory. The map's representative should be foo.go (the
+      // non-test file), not foo_test.go.
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n\ngo 1.21\n",
+        "service/foo.go": "",
+        "service/foo_test.go": "",
+        "main.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      const result = resolveImport(
+        "example.com/myapp/service",
+        path.join(project.root, "main.go"),
+        project.root,
+        project.fileSet,
+        "go",
+        undefined,
+        undefined,
+        undefined,
+        goInfo,
+      );
+
+      expect(result).toBe("service/foo.go");
+    });
+
+    it("uses lexically smallest non-test file as the representative (determinism)", () => {
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n\ngo 1.21\n",
+        "pkg/zeta.go": "",
+        "pkg/alpha.go": "",
+        "pkg/middle.go": "",
+        "main.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      const result = resolveImport(
+        "example.com/myapp/pkg",
+        path.join(project.root, "main.go"),
+        project.root,
+        project.fileSet,
+        "go",
+        undefined,
+        undefined,
+        undefined,
+        goInfo,
+      );
+
+      expect(result).toBe("pkg/alpha.go");
+    });
+
+    it("returns null for a similar-prefix import that is not a subpackage", () => {
+      // `example.com/myapp-other/pkg` shares the prefix `example.com/myapp`
+      // textually but is a separate module. Must not resolve to anything
+      // inside the local project.
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n\ngo 1.21\n",
+        "pkg/foo.go": "",
+        "main.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      const result = resolveImport(
+        "example.com/myapp-other/pkg",
+        path.join(project.root, "main.go"),
+        project.root,
+        project.fileSet,
+        "go",
+        undefined,
+        undefined,
+        undefined,
+        goInfo,
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("buildGoModuleInfo", () => {
+    it("parses a simple go.mod and returns module path + package map", () => {
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n\ngo 1.21\n",
+        "main.go": "",
+        "internal/helper.go": "",
+        "internal/util.go": "",
+      });
+
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      expect(goInfo).not.toBeNull();
+      expect(goInfo?.modulePath).toBe("example.com/myapp");
+      // Root package
+      expect(goInfo?.packageMap.get(".")).toBe("main.go");
+      // Subpackage — first lex-sorted file wins
+      expect(goInfo?.packageMap.get("internal")).toBe("internal/helper.go");
+    });
+
+    it("parses go.mod with leading whitespace and trailing content", () => {
+      project = createTempProject({
+        "go.mod": "  module github.com/user/repo\n\ngo 1.21\n\nrequire (\n\tgithub.com/x/y v1.0.0\n)\n",
+        "main.go": "",
+      });
+
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      expect(goInfo?.modulePath).toBe("github.com/user/repo");
+    });
+
+    it("returns null when go.mod is missing", () => {
+      project = createTempProject({
+        "main.go": "",
+      });
+
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      expect(goInfo).toBeNull();
+    });
+
+    it("returns null when go.mod has no module directive", () => {
+      project = createTempProject({
+        "go.mod": "// no module line\ngo 1.21\n",
+        "main.go": "",
+      });
+
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      expect(goInfo).toBeNull();
+    });
+
+    it("excludes _test.go files from the package map representatives", () => {
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n",
+        "service/foo_test.go": "",
+        "service/foo.go": "",
+      });
+
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      expect(goInfo?.packageMap.get("service")).toBe("service/foo.go");
+    });
+
+    it("does not include directories that contain only _test.go files", () => {
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n",
+        "internal/only_test.go": "",
+        "main.go": "",
+      });
+
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      // Map has "." (for main.go) but no "internal" entry, because the
+      // only file there is a test file.
+      expect(goInfo?.packageMap.has(".")).toBe(true);
+      expect(goInfo?.packageMap.has("internal")).toBe(false);
+    });
+
+    it("uses forward-slash keys for nested packages (cross-platform lookup)", () => {
+      // Go imports always use forward slashes; the map keys must match
+      // that form so resolution works on Windows, where path.dirname
+      // would otherwise produce backslash-separated keys for nested
+      // packages. The map value preserves the fileSet's native form
+      // (test fixtures use forward slashes since createTempProject keys
+      // its fileSet by the input relPath).
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n",
+        "pkg/subpkg/file.go": "",
+      });
+
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      expect(goInfo?.packageMap.has("pkg/subpkg")).toBe(true);
+      expect(goInfo?.packageMap.get("pkg/subpkg")).toBe("pkg/subpkg/file.go");
+    });
+
+    it("resolves nested-package imports", () => {
+      project = createTempProject({
+        "go.mod": "module example.com/myapp\n",
+        "pkg/subpkg/file.go": "",
+        "main.go": "",
+      });
+      const goInfo = buildGoModuleInfo(project.fileSet, project.root);
+
+      const result = resolveImport(
+        "example.com/myapp/pkg/subpkg",
+        path.join(project.root, "main.go"),
+        project.root,
+        project.fileSet,
+        "go",
+        undefined,
+        undefined,
+        undefined,
+        goInfo,
+      );
+
+      expect(result).toBe("pkg/subpkg/file.go");
     });
   });
 

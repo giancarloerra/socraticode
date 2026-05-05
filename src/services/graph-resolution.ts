@@ -119,6 +119,88 @@ export function buildCsNamespaceMap(
 }
 
 /**
+ * Information needed to resolve Go imports to local files.
+ *
+ * Built once per graph build by parsing the project's `go.mod` and walking
+ * the file set. `modulePath` is the value of the `module` directive in
+ * `go.mod` (e.g. `github.com/user/repo`); imports starting with this
+ * prefix are local to the project. `packageMap` maps a Go package's
+ * directory (relative to the project root, with "." for the root package)
+ * to the lex-smallest non-test `.go` file in that directory, used as a
+ * representative target for file-level edges in the graph.
+ *
+ * Returns null when `go.mod` is missing or malformed (no parseable
+ * `module` directive). Callers must treat null as "no Go resolution
+ * available" and return null for all Go imports.
+ */
+export interface GoModuleInfo {
+  modulePath: string;
+  packageMap: Map<string, string>;
+}
+
+/**
+ * Build Go module-resolution info for a project.
+ *
+ * Reads `<projectPath>/go.mod` once, parses the module path with a regex,
+ * and constructs a directory-to-representative-file map across all `.go`
+ * files in the file set. `_test.go` files are excluded — Go does not
+ * allow them to be imported from non-test code in other packages. Files
+ * are sorted lexicographically before the map is built so the
+ * representative chosen for each multi-file package is deterministic
+ * across machines and runs.
+ *
+ * Cost: one `readFileSync` plus an O(n) walk over `.go` files at
+ * graph-build time. Lookups during resolution are O(1).
+ *
+ * Limitations (deferred to follow-up issues if reported):
+ *   - Parenthesized `module ( ... )` form (rare; not used by any
+ *     mainstream Go project).
+ *   - `vendor/` directory shadowing of external imports.
+ *   - `replace` directives in `go.mod`.
+ *   - `go.work` multi-module workspaces.
+ */
+export function buildGoModuleInfo(
+  fileSet: Set<string>,
+  projectPath: string,
+): GoModuleInfo | null {
+  let goModSource: string;
+  try {
+    goModSource = readFileSync(path.join(projectPath, "go.mod"), "utf-8");
+  } catch {
+    return null;
+  }
+
+  // Match `module <path>` at the start of a line, allowing leading
+  // horizontal whitespace and capturing the path token greedily up to
+  // the next whitespace. Module paths are non-whitespace tokens (e.g.
+  // `github.com/user/repo`, `go.uber.org/zap`).
+  const match = goModSource.match(/^[ \t]*module[ \t]+(\S+)/m);
+  if (!match) return null;
+  const modulePath = match[1];
+
+  const goFiles = [...fileSet]
+    .filter((f) => f.endsWith(".go") && !f.endsWith("_test.go"))
+    .sort();
+
+  const packageMap = new Map<string, string>();
+  for (const f of goFiles) {
+    // Normalize the directory key to forward slashes. Go import paths
+    // always use forward slashes regardless of host OS, so the key must
+    // be in the same form for the lookup in resolveImport to succeed on
+    // Windows (where path.dirname produces backslash separators for
+    // nested directories like `pkg\subpkg`). The map value keeps the
+    // file's native-separator form so it matches fileSet entries used
+    // elsewhere as graph node keys.
+    const dir = path.dirname(f).replace(/\\/g, "/"); // "." for files at the project root
+    if (!packageMap.has(dir)) {
+      packageMap.set(dir, f);
+    }
+  }
+
+  return { modulePath, packageMap };
+}
+
+/**
  * Resolve a module specifier to a relative file path within the project.
  * Returns null if the module is external (e.g., npm package, stdlib).
  */
@@ -131,6 +213,7 @@ export function resolveImport(
   aliases?: PathAliases,
   jvmSuffixMap?: Map<string, string>,
   csNamespaceMap?: Map<string, string[]>,
+  goModuleInfo?: GoModuleInfo | null,
 ): string | null {
   // Skip obvious external/stdlib modules
   if (isExternalModule(moduleSpecifier, language)) return null;
@@ -206,9 +289,30 @@ export function resolveImport(
     }
 
     case "go": {
-      // Go imports are package paths; only track if it looks like a local module
-      // (contains the module name or starts with ./)
-      return null; // Go resolution requires go.mod analysis
+      // Local Go imports are rooted at the module path declared in go.mod
+      // (built by buildGoModuleInfo at graph-build time). When the import
+      // starts with that prefix, strip it to get the package's directory
+      // relative to the project root, then look up the representative
+      // file for that directory. Imports outside the module path are
+      // external dependencies (or stdlib already filtered upstream by
+      // isExternalModule) and resolve to null.
+      if (!goModuleInfo) return null;
+      if (!moduleSpecifier.startsWith(goModuleInfo.modulePath)) return null;
+      const rest = moduleSpecifier.slice(goModuleInfo.modulePath.length);
+      // rest === "" → the root package (the directory containing go.mod).
+      // rest starts with "/" → a subpackage; strip the leading slash.
+      // Anything else (e.g. an import that happens to share the prefix
+      // but isn't actually a subpackage, like
+      // `github.com/user/repo-other`) is external.
+      let dir: string;
+      if (rest === "") {
+        dir = ".";
+      } else if (rest.startsWith("/")) {
+        dir = rest.slice(1);
+      } else {
+        return null;
+      }
+      return goModuleInfo.packageMap.get(dir) ?? null;
     }
 
     case "java":

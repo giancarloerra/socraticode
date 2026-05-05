@@ -4,6 +4,18 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.8.5](https://github.com/giancarloerra/socraticode/compare/v1.8.4...v1.8.5) (2026-05-05)
+
+### Bug Fixes
+
+* **graph:** allow Go resolution for projects with golang.org/* module paths ([8c26ed8](https://github.com/giancarloerra/socraticode/commit/8c26ed8b49f8aae030d519aca3a0ab84ad07d90d))
+* **graph:** resolve Go imports via go.mod module path ([c156da1](https://github.com/giancarloerra/socraticode/commit/c156da1688e4e2b8b9c1dfb042094b018131d8f7))
+* **graph:** resolve Python sibling-flat imports in service-style monorepos ([8921690](https://github.com/giancarloerra/socraticode/commit/8921690d7286ba858337d2df478ef01772d6d055))
+
+### Documentation
+
+* add note about MCP governance and JanuScope ([bf36c0c](https://github.com/giancarloerra/socraticode/commit/bf36c0c1b7d3ceb73161afe20628cc994dca404c))
+
 ## [1.8.4](https://github.com/giancarloerra/socraticode/compare/v1.8.3...v1.8.4) (2026-05-04)
 
 ### Bug Fixes

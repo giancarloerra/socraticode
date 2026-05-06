@@ -269,17 +269,24 @@ Defined in `src/services/docker.ts`: after starting the container, the server po
 
 ### Project ID & Collection Naming
 
-Defined in `src/config.ts`:
-- **Project ID**: First 12 characters of SHA-256 hash of the absolute project path.
+Defined in `src/config.ts`. `projectIdFromPath()` resolves the project ID with the following precedence (highest first):
+
+1. **`SOCRATICODE_PROJECT_ID` env var** — per-machine override; bypasses both file lookup and path hashing.
+2. **`projectId` field in `.socraticode.json`** — committed, team-wide stable identifier; survives different filesystem layouts and OS users.
+3. **First 12 characters of SHA-256 of the absolute project path** — default fallback.
+
+In both override paths the value must match `[a-zA-Z0-9_-]+`; whitespace is trimmed; empty/whitespace-only values fall through to the next level. Invalid characters in an explicit override fail loud (throw) — silent fallback would hide misconfigurations that map a project to the wrong (or new) collection.
+
+Collection names derived from the project ID:
 - **Code collection**: `codebase_{projectId}`
 - **Graph collection**: `codegraph_{projectId}`
 - **Context artifacts collection**: `context_{projectId}`
 
-This means the same folder path always maps to the same collection, even across restarts.
+With the default (path-hash) ID, the same folder path always maps to the same collection across restarts. With either override, the mapping is stable across machines and checkouts.
 
 #### Branch-aware mode
 
-When `SOCRATICODE_BRANCH_AWARE=true`, the current git branch is detected via `git rev-parse --abbrev-ref HEAD` and appended to the project ID (e.g. `abc123def456__feat_my-feature`). Branch names are sanitized: non-alphanumeric characters (except `-`) become `_`, consecutive underscores collapse, leading/trailing underscores are stripped. Detached HEAD states fall back to the branchless ID. Ignored when `SOCRATICODE_PROJECT_ID` is set explicitly.
+When `SOCRATICODE_BRANCH_AWARE=true`, the current git branch is detected via `git rev-parse --abbrev-ref HEAD` and appended to the project ID (e.g. `abc123def456__feat_my-feature`). Branch names are sanitized: non-alphanumeric characters (except `-`) become `_`, consecutive underscores collapse, leading/trailing underscores are stripped. Detached HEAD states fall back to the branchless ID. Ignored when `SOCRATICODE_PROJECT_ID` is set explicitly or when `projectId` is set in `.socraticode.json` — explicit identifiers are treated as stable and not augmented per branch.
 
 #### Linked projects
 

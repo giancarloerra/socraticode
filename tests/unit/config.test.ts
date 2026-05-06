@@ -357,6 +357,32 @@ describe("config", () => {
       expect(collections[0].name).toBe("codebase_shared-team-id");
     });
 
+    it("does not wrongly dedup a linked project when env override diverges from file projectId", () => {
+      // Regression for a subtle dedup misalignment: the dedup seed used
+      // the file-only `effectiveBaseProjectId`, while the current
+      // project's collection name comes from the env-aware
+      // `projectIdFromPath`. When `SOCRATICODE_PROJECT_ID` is set on the
+      // current project AND both projects pin the same `projectId` in
+      // their `.socraticode.json`, the two computations disagreed and
+      // the linked project was wrongly skipped — losing its data even
+      // though it lives in a collection genuinely distinct from the
+      // env-overridden current one.
+      process.env.SOCRATICODE_PROJECT_ID = "env-override";
+      fs.writeFileSync(
+        path.join(linkedDir, ".socraticode.json"),
+        JSON.stringify({ projectId: "shared-id" }),
+      );
+      fs.writeFileSync(
+        path.join(projectDir, ".socraticode.json"),
+        JSON.stringify({ projectId: "shared-id", linkedProjects: ["../linked-lib"] }),
+      );
+
+      const collections = resolveLinkedCollections(projectDir);
+      expect(collections).toHaveLength(2);
+      expect(collections[0].name).toBe("codebase_env-override");
+      expect(collections[1].name).toBe("codebase_shared-id");
+    });
+
     it("does not leak SOCRATICODE_PROJECT_ID env var into linked-project collection names", () => {
       // The env var is process-scoped and applies only to the current
       // project. Without this guard, linked projects would all collapse

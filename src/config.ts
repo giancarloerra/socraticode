@@ -267,16 +267,22 @@ export function loadLinkedProjects(projectPath: string): string[] {
  * preserves symmetry — a project addresses the same Qdrant collection whether
  * it is the current root or a linked dependency from another project.
  *
- * Dedup uses the same effective base ID, so two paths that pin the same
- * shared `projectId` (or otherwise resolve to the same collection) appear at
- * most once in the result.
+ * Dedup compares against the *current project's full ID* (env override → file
+ * → path-hash, with optional branch suffix). This guarantees the dedup key
+ * matches the actual collection name being added: a linked project is skipped
+ * only when it would resolve to the same collection that the current project
+ * already occupies. Seeding from `effectiveBaseProjectId(resolvedRoot)` would
+ * misalign the seed when `SOCRATICODE_PROJECT_ID` is set, causing linked
+ * projects whose file `projectId` happens to match the current project's file
+ * `projectId` to be silently dropped even though their data lives in a
+ * different collection than the env-overridden current one.
  */
 export function resolveLinkedCollections(
   projectPath: string,
 ): Array<{ name: string; label: string }> {
   const resolvedRoot = path.resolve(projectPath);
   const currentId = projectIdFromPath(resolvedRoot);
-  const seen = new Set<string>([effectiveBaseProjectId(resolvedRoot)]);
+  const seen = new Set<string>([currentId]);
   const collections: Array<{ name: string; label: string }> = [
     { name: collectionName(currentId), label: path.basename(resolvedRoot) },
   ];

@@ -38,29 +38,65 @@ export function sanitizeBranchName(branch: string): string {
     .replace(/^_|_$/g, "");
 }
 
+/** Pattern of characters valid in a Qdrant collection name suffix. */
+const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+/** Validate an explicitly-supplied projectId. Throws on bad characters. */
+function assertValidProjectId(value: string, source: string): void {
+  if (!PROJECT_ID_PATTERN.test(value)) {
+    throw new Error(`${source} must match [a-zA-Z0-9_-]+ but got: "${value}"`);
+  }
+}
+
+/**
+ * Read and validate `projectId` from `.socraticode.json`, if present.
+ *
+ * Returns the trimmed id when the file declares a usable string, `null`
+ * otherwise (file missing, malformed JSON, field absent, wrong type, or
+ * empty after trim). Throws when the field is a string with characters
+ * outside the Qdrant-friendly set — explicit user intent fails loud.
+ */
+function readProjectIdFromConfigFile(folderPath: string): string | null {
+  const config = loadSocratiCodeConfig(folderPath);
+  if (!config || typeof config.projectId !== "string") return null;
+  const trimmed = config.projectId.trim();
+  if (!trimmed) return null;
+  assertValidProjectId(trimmed, ".socraticode.json: projectId");
+  return trimmed;
+}
+
 /**
  * Generate a stable project ID from an absolute folder path.
  * Uses a short SHA-256 prefix so collection names stay Qdrant-friendly.
  *
- * When `SOCRATICODE_PROJECT_ID` is set, that value is used directly instead
- * of hashing the path.  This lets multiple directory trees (e.g. git
- * worktrees) share a single Qdrant index.  The value must contain only
- * characters valid in a Qdrant collection name (`[a-zA-Z0-9_-]`).
+ * Resolution order (highest precedence first):
+ *   1. `SOCRATICODE_PROJECT_ID` env var — per-machine override.
+ *   2. `projectId` in `.socraticode.json` — committed, shared across the
+ *      team so every checkout addresses the same Qdrant collection
+ *      regardless of where the working tree lives on disk.
+ *   3. SHA-256 prefix of the resolved absolute path — default fallback.
+ *
+ * In both override paths the value must match `[a-zA-Z0-9_-]+`; invalid
+ * characters throw. Whitespace is trimmed; empty/whitespace-only values
+ * fall through to the next level.
  *
  * When `SOCRATICODE_BRANCH_AWARE` is `"true"` (and no explicit project ID
- * is set), the current git branch name is appended to the hash, producing
- * a separate set of collections per branch.
+ * is set via env var or config file), the current git branch name is
+ * appended to the hash, producing a separate set of collections per
+ * branch.
  */
 export function projectIdFromPath(folderPath: string): string {
-  const explicit = process.env.SOCRATICODE_PROJECT_ID?.trim();
-  if (explicit) {
-    if (!/^[a-zA-Z0-9_-]+$/.test(explicit)) {
-      throw new Error(
-        `SOCRATICODE_PROJECT_ID must match [a-zA-Z0-9_-]+ but got: "${explicit}"`,
-      );
-    }
-    return explicit;
+  const envExplicit = process.env.SOCRATICODE_PROJECT_ID?.trim();
+  if (envExplicit) {
+    assertValidProjectId(envExplicit, "SOCRATICODE_PROJECT_ID");
+    return envExplicit;
   }
+
+  const fileExplicit = readProjectIdFromConfigFile(folderPath);
+  if (fileExplicit) {
+    return fileExplicit;
+  }
+
   let id = coreProjectId(folderPath);
 
   // Branch-aware mode: append sanitized branch name to isolate per-branch indexes
@@ -79,12 +115,25 @@ export function projectIdFromPath(folderPath: string): string {
 
 /**
  * Core project ID: SHA-256 hash of the resolved path, without branch suffix.
- * Used internally by resolveLinkedCollections so linked projects always
- * resolve to their base collection regardless of SOCRATICODE_BRANCH_AWARE.
+ * Used as the default fallback when no explicit project ID is configured.
  */
 function coreProjectId(folderPath: string): string {
   const normalized = path.resolve(folderPath);
   return createHash("sha256").update(normalized).digest("hex").slice(0, 12);
+}
+
+/**
+ * Branch-suffix-free, env-var-free project ID for a given path.
+ *
+ * Resolution: `projectId` from `.socraticode.json` if present, else the
+ * SHA-256 path hash. Used for linked projects (where `SOCRATICODE_PROJECT_ID`
+ * is process-scoped and ambiguous when applied to a different project) and
+ * for dedup keys in `resolveLinkedCollections` (where we need a stable
+ * identity that doesn't drift across branches).
+ */
+function effectiveBaseProjectId(folderPath: string): string {
+  const fileId = readProjectIdFromConfigFile(folderPath);
+  return fileId ?? coreProjectId(folderPath);
 }
 
 /**
@@ -127,12 +176,45 @@ export function symgraphIndexCollectionName(projectId: string): string {
 
 // ── Linked projects ──────────────────────────────────────────────────────
 
-/** Configuration file name for linked projects */
+/** Configuration file name shared by all `.socraticode.json` consumers. */
 const SOCRATICODE_CONFIG_FILE = ".socraticode.json";
 
-/** Shape of .socraticode.json */
+/**
+ * Shape of `.socraticode.json`.
+ *
+ * Fields are typed as their intended shape; runtime validators in the
+ * consumers tolerate malformed values (wrong type, null, etc.) so the
+ * MCP server stays resilient against hand-edited config files.
+ */
 interface SocratiCodeConfig {
+  /**
+   * Stable project identifier shared across machines/checkouts.
+   * When set, overrides the path-hash default so every team member
+   * addresses the same Qdrant collection regardless of where the
+   * working tree lives on disk. The env var
+   * `SOCRATICODE_PROJECT_ID` takes precedence over this field.
+   */
+  projectId?: string;
+  /** Paths (absolute or relative to this file) of related projects to search alongside this one. */
   linkedProjects?: string[];
+}
+
+/**
+ * Read and parse `.socraticode.json` from a project directory.
+ *
+ * Returns the parsed object or `null` when the file is missing,
+ * unreadable, or contains malformed JSON. Per-field validation is the
+ * caller's responsibility — this loader only handles I/O and parsing.
+ */
+function loadSocratiCodeConfig(projectPath: string): SocratiCodeConfig | null {
+  const configPath = path.join(path.resolve(projectPath), SOCRATICODE_CONFIG_FILE);
+  try {
+    if (!fs.existsSync(configPath)) return null;
+    const raw = fs.readFileSync(configPath, "utf-8");
+    return JSON.parse(raw) as SocratiCodeConfig;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -146,24 +228,16 @@ export function loadLinkedProjects(projectPath: string): string[] {
   const paths = new Set<string>();
 
   // 1. Read .socraticode.json
-  const configPath = path.join(resolvedRoot, SOCRATICODE_CONFIG_FILE);
-  try {
-    if (fs.existsSync(configPath)) {
-      const raw = fs.readFileSync(configPath, "utf-8");
-      const config = JSON.parse(raw) as SocratiCodeConfig;
-      if (Array.isArray(config.linkedProjects)) {
-        for (const p of config.linkedProjects) {
-          if (typeof p === "string" && p.trim()) {
-            const resolved = path.resolve(resolvedRoot, p.trim());
-            if (resolved !== resolvedRoot && fs.existsSync(resolved)) {
-              paths.add(resolved);
-            }
-          }
+  const config = loadSocratiCodeConfig(resolvedRoot);
+  if (config && Array.isArray(config.linkedProjects)) {
+    for (const p of config.linkedProjects) {
+      if (typeof p === "string" && p.trim()) {
+        const resolved = path.resolve(resolvedRoot, p.trim());
+        if (resolved !== resolvedRoot && fs.existsSync(resolved)) {
+          paths.add(resolved);
         }
       }
     }
-  } catch {
-    // Malformed JSON or read error — skip silently
   }
 
   // 2. Read env var (comma-separated)
@@ -187,24 +261,30 @@ export function loadLinkedProjects(projectPath: string): string[] {
  * Resolve linked projects into Qdrant collection descriptors for multi-collection search.
  * Returns an array of { name, label } suitable for `searchMultipleCollections()`.
  * The current project is always first (highest priority for dedup).
+ *
+ * Linked-project IDs are resolved via `effectiveBaseProjectId`, which honors
+ * each linked project's own `.socraticode.json` `projectId` field. This
+ * preserves symmetry — a project addresses the same Qdrant collection whether
+ * it is the current root or a linked dependency from another project.
+ *
+ * Dedup uses the same effective base ID, so two paths that pin the same
+ * shared `projectId` (or otherwise resolve to the same collection) appear at
+ * most once in the result.
  */
 export function resolveLinkedCollections(
   projectPath: string,
 ): Array<{ name: string; label: string }> {
   const resolvedRoot = path.resolve(projectPath);
   const currentId = projectIdFromPath(resolvedRoot);
-  const currentCoreId = coreProjectId(resolvedRoot);
+  const seen = new Set<string>([effectiveBaseProjectId(resolvedRoot)]);
   const collections: Array<{ name: string; label: string }> = [
     { name: collectionName(currentId), label: path.basename(resolvedRoot) },
   ];
 
-  const linked = loadLinkedProjects(resolvedRoot);
-  for (const linkedPath of linked) {
-    // Use base hash (no branch suffix) — linked projects are resolved by their
-    // standard collection name regardless of SOCRATICODE_BRANCH_AWARE.
-    const linkedId = coreProjectId(linkedPath);
-    // Skip if same base project (e.g. worktrees sharing the same path hash)
-    if (linkedId === currentCoreId) continue;
+  for (const linkedPath of loadLinkedProjects(resolvedRoot)) {
+    const linkedId = effectiveBaseProjectId(linkedPath);
+    if (seen.has(linkedId)) continue;
+    seen.add(linkedId);
     collections.push({
       name: collectionName(linkedId),
       label: path.basename(linkedPath),

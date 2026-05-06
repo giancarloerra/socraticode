@@ -4,6 +4,12 @@ All notable changes to SocratiCode are documented here.
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Semantic Versioning](https://semver.org/).
 
 
+## [1.8.7](https://github.com/giancarloerra/socraticode/compare/v1.8.6...v1.8.7) (2026-05-06)
+
+### Bug Fixes
+
+* **context:** checkpoint artifact metadata after each successful index ([#52](https://github.com/giancarloerra/socraticode/issues/52)) ([2007a18](https://github.com/giancarloerra/socraticode/commit/2007a18865d31cad3be6f5e2e88f834156c5df37))
+
 ## [1.8.6](https://github.com/giancarloerra/socraticode/compare/v1.8.5...v1.8.6) (2026-05-05)
 
 ### Features

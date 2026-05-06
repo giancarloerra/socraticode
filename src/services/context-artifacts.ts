@@ -374,11 +374,24 @@ export async function indexAllArtifacts(projectPath: string): Promise<{
 
   const indexed: ArtifactIndexState[] = [];
   const errors: Array<{ name: string; error: string }> = [];
+  const configNames = new Set(config.artifacts.map((a) => a.name));
+  const stateMap = new Map<string, ArtifactIndexState>();
+
+  const existingStates = await loadContextMetadata(collection);
+  if (existingStates) {
+    for (const state of existingStates) {
+      if (configNames.has(state.name)) {
+        stateMap.set(state.name, state);
+      }
+    }
+  }
 
   for (const artifact of config.artifacts) {
     try {
       const state = await indexArtifact(resolvedProject, artifact, collection);
       indexed.push(state);
+      stateMap.set(artifact.name, state);
+      await saveContextMetadata(collection, resolvedProject, [...stateMap.values()]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error("Failed to index artifact", { name: artifact.name, error: msg });
@@ -386,9 +399,10 @@ export async function indexAllArtifacts(projectPath: string): Promise<{
     }
   }
 
-  // Save metadata
-  if (indexed.length > 0) {
-    await saveContextMetadata(collection, resolvedProject, indexed);
+  // Save final metadata, even if all artifacts failed, so removed artifacts no
+  // longer linger in status after a config change.
+  if (stateMap.size > 0 || existingStates?.length) {
+    await saveContextMetadata(collection, resolvedProject, [...stateMap.values()]);
   }
 
   return { indexed, errors };
@@ -425,7 +439,13 @@ export async function ensureArtifactsIndexed(projectPath: string): Promise<{
   const reindexed: string[] = [];
   const upToDate: string[] = [];
   const errors: Array<{ name: string; error: string }> = [];
-  const allStates: ArtifactIndexState[] = [];
+  const configNames = new Set(config.artifacts.map((a) => a.name));
+
+  for (const name of [...stateMap.keys()]) {
+    if (!configNames.has(name)) {
+      stateMap.delete(name);
+    }
+  }
 
   for (const artifact of config.artifacts) {
     try {
@@ -440,29 +460,26 @@ export async function ensureArtifactsIndexed(projectPath: string): Promise<{
       if (existing && existing.contentHash === currentHash) {
         // Up to date
         upToDate.push(artifact.name);
-        allStates.push(existing);
       } else {
         // Stale or new — re-index
         const state = await indexArtifact(resolvedProject, artifact, collection);
         reindexed.push(artifact.name);
-        allStates.push(state);
+        stateMap.set(artifact.name, state);
+        await saveContextMetadata(collection, resolvedProject, [...stateMap.values()]);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error("Failed to check/index artifact", { name: artifact.name, error: msg });
       errors.push({ name: artifact.name, error: msg });
-      // Preserve existing state if available
-      const existing = stateMap.get(artifact.name);
-      if (existing) allStates.push(existing);
     }
   }
 
   // Remove artifacts that are no longer in config
-  const configNames = new Set(config.artifacts.map((a) => a.name));
-  for (const [name] of stateMap) {
+  for (const name of existingStates?.map((s) => s.name) ?? []) {
     if (!configNames.has(name)) {
       try {
         await deleteArtifactChunks(collection, name);
+        stateMap.delete(name);
         logger.info("Removed artifact no longer in config", { name });
       } catch {
         // ignore
@@ -470,9 +487,9 @@ export async function ensureArtifactsIndexed(projectPath: string): Promise<{
     }
   }
 
-  // Save updated metadata
-  if (allStates.length > 0) {
-    await saveContextMetadata(collection, resolvedProject, allStates);
+  // Save updated metadata, even when only removals happened.
+  if (stateMap.size > 0 || existingStates?.length) {
+    await saveContextMetadata(collection, resolvedProject, [...stateMap.values()]);
   }
 
   return { reindexed, upToDate, errors };
